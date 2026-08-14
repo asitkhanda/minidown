@@ -4,7 +4,7 @@ import type { EditorView, DecorationSet } from "@codemirror/view";
 import { ensureSyntaxTree, highlightingFor } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
 import { editorExtensions } from "./editorSetup";
-import { buildDecorations, buildTableDecorations } from "./livePreview";
+import { buildDecorations, buildBlockDecorations } from "./livePreview";
 import {
   focusRange,
   buildFocusDecorations,
@@ -203,6 +203,77 @@ describe("typewriter mode", () => {
   });
 });
 
+describe("extended syntax (phase 4)", () => {
+  it("parses frontmatter, footnotes, and math", () => {
+    const doc = [
+      "---",
+      "title: Test",
+      "---",
+      "",
+      "Euler said $e^{i\\pi} = -1$ once[^note].",
+      "",
+      "$$",
+      "\\int_0^1 x^2 dx",
+      "$$",
+    ].join("\n");
+    const state = makeState(doc, 0);
+    const names = new Set<string>();
+    ensureSyntaxTree(state, state.doc.length, 5000)!.iterate({
+      enter: (node) => {
+        names.add(node.name);
+      },
+    });
+    for (const expected of [
+      "Frontmatter",
+      "InlineMath",
+      "FootnoteRef",
+      "BlockMath",
+    ]) {
+      expect(names, `missing node ${expected}`).toContain(expected);
+    }
+  });
+
+  it("does not treat dollar amounts as math", () => {
+    const state = makeState("It costs $5 and $10 total.", 0);
+    let found = false;
+    ensureSyntaxTree(state, state.doc.length, 5000)!.iterate({
+      enter: (node) => {
+        if (node.name === "InlineMath") found = true;
+      },
+    });
+    expect(found).toBe(false);
+  });
+
+  it("replaces inline math with a widget only when inactive", () => {
+    const doc = "before\n\nThe formula $x^2$ here.";
+    // InlineMath spans [20,25)
+    const away = buildDecorations(fakeView(makeState(doc, 0)));
+    expect(widgetsBetween(away, 20, 25)).toBe(1);
+    const inside = buildDecorations(fakeView(makeState(doc, 22)));
+    expect(widgetsBetween(inside, 20, 25)).toBe(0);
+  });
+
+  it("replaces block math and mermaid fences with block widgets", () => {
+    const doc = [
+      "start",
+      "",
+      "$$",
+      "a^2 + b^2 = c^2",
+      "$$",
+      "",
+      "```mermaid",
+      "graph TD; A-->B;",
+      "```",
+    ].join("\n");
+    const away = makeState(doc, 0);
+    let widgets = 0;
+    buildBlockDecorations(away).between(0, doc.length, () => {
+      widgets++;
+    });
+    expect(widgets).toBe(2);
+  });
+});
+
 describe("example documents", () => {
   it("decorate without throwing, at every cursor position group", async () => {
     const fs = await import("node:fs");
@@ -219,7 +290,7 @@ describe("example documents", () => {
       for (const pos of positions) {
         const state = makeState(doc, pos);
         expect(() => buildDecorations(fakeView(state)), `${file}@${pos}`).not.toThrow();
-        expect(() => buildTableDecorations(state), `${file}@${pos}`).not.toThrow();
+        expect(() => buildBlockDecorations(state), `${file}@${pos}`).not.toThrow();
       }
     }
   });
@@ -230,7 +301,7 @@ describe("table rendering", () => {
 
   it("replaces the table with a widget when the selection is outside", () => {
     const state = makeState(doc, doc.length);
-    const set = buildTableDecorations(state);
+    const set = buildBlockDecorations(state);
     let widgets = 0;
     set.between(0, state.doc.length, () => {
       widgets++;
@@ -240,7 +311,7 @@ describe("table rendering", () => {
 
   it("shows raw markdown when the selection is inside the table", () => {
     const state = makeState(doc, 2);
-    const set = buildTableDecorations(state);
+    const set = buildBlockDecorations(state);
     let widgets = 0;
     set.between(0, state.doc.length, () => {
       widgets++;

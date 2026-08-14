@@ -11,6 +11,8 @@ import {
 } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import katex from "katex";
+import "katex/dist/katex.min.css";
 import { docState, IN_TAURI } from "./docState";
 
 // Live preview: markdown syntax renders in place and its marks hide whenever
@@ -22,6 +24,7 @@ const inlineCode = Decoration.mark({ class: "cm-inlinecode" });
 const codeInfo = Decoration.mark({ class: "cm-codeinfo" });
 const quoteLine = Decoration.line({ class: "cm-blockquote-line" });
 const tableLine = Decoration.line({ class: "cm-table-line" });
+const frontmatterLine = Decoration.line({ class: "cm-frontmatter-line" });
 const headingLines = [1, 2, 3, 4, 5, 6].map((level) =>
   Decoration.line({ class: `cm-heading-line cm-h${level}-line` }),
 );
@@ -94,6 +97,91 @@ class ImageWidget extends WidgetType {
     return img;
   }
   // Let the editor handle clicks so the cursor lands in the syntax and reveals it
+  ignoreEvent() {
+    return false;
+  }
+}
+
+class MathWidget extends WidgetType {
+  constructor(
+    readonly tex: string,
+    readonly display: boolean,
+  ) {
+    super();
+  }
+  eq(other: MathWidget) {
+    return other.tex === this.tex && other.display === this.display;
+  }
+  toDOM() {
+    const el = document.createElement(this.display ? "div" : "span");
+    el.className = this.display ? "cm-math-block" : "cm-math-inline";
+    try {
+      katex.render(this.tex, el, {
+        displayMode: this.display,
+        throwOnError: false,
+      });
+    } catch {
+      el.textContent = this.tex;
+      el.classList.add("cm-math-error");
+    }
+    return el;
+  }
+  ignoreEvent() {
+    return false;
+  }
+}
+
+function isDarkTheme(): boolean {
+  const forced = document.documentElement.dataset.theme;
+  if (forced) return forced === "dark";
+  return typeof window.matchMedia === "function"
+    ? window.matchMedia("(prefers-color-scheme: dark)").matches
+    : false;
+}
+
+let mermaidCounter = 0;
+const mermaidCache = new Map<string, string>();
+
+class MermaidWidget extends WidgetType {
+  constructor(
+    readonly src: string,
+    readonly dark: boolean,
+  ) {
+    super();
+  }
+  eq(other: MermaidWidget) {
+    return other.src === this.src && other.dark === this.dark;
+  }
+  toDOM() {
+    const el = document.createElement("div");
+    el.className = "cm-mermaid";
+    const key = `${this.dark ? "d" : "l"}:${this.src}`;
+    const cached = mermaidCache.get(key);
+    if (cached) {
+      el.innerHTML = cached;
+      return el;
+    }
+    el.textContent = "Rendering diagram…";
+    void (async () => {
+      try {
+        const mermaid = (await import("mermaid")).default;
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: this.dark ? "dark" : "neutral",
+        });
+        const { svg } = await mermaid.render(
+          `mmd-${mermaidCounter++}`,
+          this.src,
+        );
+        mermaidCache.set(key, svg);
+        el.innerHTML = svg;
+      } catch (error) {
+        el.textContent = String(error);
+        el.classList.add("cm-mermaid-error");
+      }
+    })();
+    return el;
+  }
   ignoreEvent() {
     return false;
   }
@@ -204,6 +292,27 @@ export function buildDecorations(view: EditorView): DecorationSet {
             break;
           }
 
+          case "Frontmatter": {
+            const first = doc.lineAt(node.from).number;
+            const last = doc.lineAt(node.to).number;
+            for (let n = first; n <= last; n++) {
+              deco.push(frontmatterLine.range(doc.line(n).from));
+            }
+            break;
+          }
+
+          case "InlineMath": {
+            if (touches(node.from, node.to)) break;
+            const tex = doc.sliceString(node.from + 1, node.to - 1);
+            deco.push(
+              Decoration.replace({ widget: new MathWidget(tex, false) }).range(
+                node.from,
+                node.to,
+              ),
+            );
+            break;
+          }
+
           case "Image": {
             if (lineActive(node.from)) break;
             const urlNode = node.node.getChild("URL");
@@ -311,10 +420,10 @@ const inlinePreview = ViewPlugin.fromClass(
   { decorations: (plugin) => plugin.decorations },
 );
 
-// ---------- Tables ----------
+// ---------- Block widgets (tables, block math, mermaid) ----------
 // Block-replacing decorations must come from a StateField, not a ViewPlugin.
-// A table renders as a real grid whenever the selection is outside it; click
-// (or move the cursor) into it and it reverts to raw, monospace-aligned text.
+// Each renders whenever the selection is outside it; click (or move the
+// cursor) into one and it reverts to raw text for editing.
 
 interface TableData {
   header: string[];
@@ -390,33 +499,71 @@ class TableWidget extends WidgetType {
   }
 }
 
-export function buildTableDecorations(state: EditorState): DecorationSet {
+export function buildBlockDecorations(state: EditorState): DecorationSet {
   const deco: Range<Decoration>[] = [];
   const touches = (from: number, to: number) =>
     state.selection.ranges.some((r) => r.from <= to && r.to >= from);
   syntaxTree(state).iterate({
     enter: (node) => {
-      if (node.name !== "Table") return;
-      if (touches(node.from, node.to)) return false;
-      deco.push(
-        Decoration.replace({
-          widget: new TableWidget(parseTable(state, node.node)),
-          block: true,
-        }).range(node.from, node.to),
-      );
-      return false;
+      switch (node.name) {
+        case "Table": {
+          if (touches(node.from, node.to)) return false;
+          deco.push(
+            Decoration.replace({
+              widget: new TableWidget(parseTable(state, node.node)),
+              block: true,
+            }).range(node.from, node.to),
+          );
+          return false;
+        }
+
+        case "BlockMath": {
+          if (touches(node.from, node.to)) return false;
+          const tex = state
+            .sliceDoc(node.from, node.to)
+            .replace(/^\$\$\s*/, "")
+            .replace(/\s*\$\$\s*$/, "");
+          deco.push(
+            Decoration.replace({
+              widget: new MathWidget(tex, true),
+              block: true,
+            }).range(node.from, node.to),
+          );
+          return false;
+        }
+
+        case "FencedCode": {
+          if (touches(node.from, node.to)) return false;
+          const info = node.node.getChild("CodeInfo");
+          if (!info || state.sliceDoc(info.from, info.to).trim() !== "mermaid")
+            return false;
+          const body = node.node.getChild("CodeText");
+          if (!body) return false;
+          deco.push(
+            Decoration.replace({
+              widget: new MermaidWidget(
+                state.sliceDoc(body.from, body.to),
+                isDarkTheme(),
+              ),
+              block: true,
+            }).range(node.from, node.to),
+          );
+          return false;
+        }
+      }
+      return undefined;
     },
   });
   return Decoration.set(deco, true);
 }
 
-const tableField = StateField.define<DecorationSet>({
-  create: buildTableDecorations,
+const blockField = StateField.define<DecorationSet>({
+  create: buildBlockDecorations,
   update(value, tr) {
-    if (tr.docChanged || tr.selection) return buildTableDecorations(tr.state);
+    if (tr.docChanged || tr.selection) return buildBlockDecorations(tr.state);
     return value;
   },
   provide: (field) => EditorView.decorations.from(field),
 });
 
-export const livePreview = [inlinePreview, tableField];
+export const livePreview = [inlinePreview, blockField];

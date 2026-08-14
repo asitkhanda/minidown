@@ -24,6 +24,20 @@ export const mdHighlight = HighlightStyle.define([
   { tag: tags.processingInstruction, color: "var(--syntax)" },
   { tag: tags.meta, color: "var(--syntax)" },
   { tag: tags.contentSeparator, color: "var(--syntax)" },
+  // Raw TeX between $ marks
+  {
+    tag: tags.special(tags.content),
+    fontFamily: "ui-monospace, 'SF Mono', Menlo, monospace",
+    fontSize: "0.88em",
+    color: "var(--code)",
+  },
+  // Footnote references render superscript
+  {
+    tag: tags.special(tags.link),
+    color: "var(--accent)",
+    fontSize: "0.75em",
+    verticalAlign: "super",
+  },
 ]);
 
 // Restrained, theme-aware token colors for code inside fences.

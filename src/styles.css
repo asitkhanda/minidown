@@ -216,6 +216,38 @@ body {
   background: var(--code-bg);
 }
 
+#editor .cm-line.cm-frontmatter-line {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.8em;
+  color: var(--muted);
+}
+
+#editor .cm-math-block {
+  text-align: center;
+  padding: 0.4em 0;
+  overflow-x: auto;
+}
+
+#editor .cm-math-error {
+  color: #e03131;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.85em;
+}
+
+#editor .cm-mermaid {
+  display: flex;
+  justify-content: center;
+  padding: 0.5em 0;
+  cursor: text;
+}
+
+#editor .cm-mermaid-error {
+  color: #e03131;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.8em;
+  justify-content: flex-start;
+}
+
 #editor .cm-hr {
   display: inline-block;
   width: 100%;

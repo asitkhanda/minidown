@@ -30,6 +30,7 @@ function codeLanguage(info: string): LanguageDescription | null {
   );
 }
 import { livePreview } from "./livePreview";
+import { markdownExtensions } from "./markdownExtensions";
 import { focusMode } from "./focusMode";
 import { typewriter } from "./typewriter";
 import { mdHighlight, codeHighlight } from "./highlight";
@@ -65,7 +66,11 @@ export const editorExtensions: Extension[] = [
   dropCursor(),
   EditorView.lineWrapping,
   placeholder("Start writing…"),
-  markdown({ base: markdownLanguage, codeLanguages: codeLanguage }),
+  markdown({
+    base: markdownLanguage,
+    codeLanguages: codeLanguage,
+    extensions: markdownExtensions,
+  }),
   livePreview,
   focusMode,
   typewriter,

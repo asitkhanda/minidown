@@ -48,13 +48,14 @@ A fence made of four backticks can contain ```three``` safely.
 
 *(Known limitation: cell contents render plain for now.)*
 
-## Not supported yet — should stay visibly raw, not break
+## Extended syntax edge cases
 
-Footnote reference[^1] and a definition below.
+Footnote reference[^1] renders superscript; the definition below stays readable.
 
-[^1]: Footnotes arrive in a later phase.
+[^1]: A footnote definition line.
 
-Math like $e^{i\pi} + 1 = 0$ stays literal for now.
+Math like $e^{i\pi} + 1 = 0$ renders inline, but $5 and $10 stay dollars,
+and an unclosed $ dangling alone stays literal.
 
 ## Unicode
 
