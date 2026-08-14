@@ -1,8 +1,9 @@
 [package]
 name = "minidown"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "A minimal, distraction-free Markdown writer for macOS"
+authors = ["minidown contributors"]
+license = "AGPL-3.0-only"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
