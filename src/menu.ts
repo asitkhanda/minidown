@@ -12,6 +12,7 @@ export interface MenuHandlers {
   newFile(): void;
   openFile(): void;
   saveFile(saveAs?: boolean): void;
+  exportHtml(): void;
   undo(): void;
   redo(): void;
   toggleFocus(): boolean;
@@ -69,6 +70,12 @@ export async function setupMenu(
         text: "Save As…",
         accelerator: "Shift+CmdOrCtrl+S",
         action: () => handlers.saveFile(true),
+      }),
+      await separator(),
+      await MenuItem.new({
+        text: "Export as HTML…",
+        accelerator: "Shift+CmdOrCtrl+E",
+        action: () => handlers.exportHtml(),
       }),
     ],
   });

@@ -12,6 +12,7 @@ import {
   focusModeField,
 } from "./focusMode";
 import { typewriterField, setTypewriter } from "./typewriter";
+import { buildExportHtml, parseForExport } from "./export";
 
 function makeState(doc: string, cursor: number): EditorState {
   const state = EditorState.create({
@@ -271,6 +272,56 @@ describe("extended syntax (phase 4)", () => {
       widgets++;
     });
     expect(widgets).toBe(2);
+  });
+});
+
+describe("html export", () => {
+  it("renders the core syntax to HTML", () => {
+    const html = buildExportHtml(
+      [
+        "# Title",
+        "",
+        "Some **bold** and a [link](https://example.com).",
+        "",
+        "- [x] done",
+        "",
+        "| a | b |",
+        "| --- | --- |",
+        "| 1 | 2 |",
+      ].join("\n"),
+    );
+    expect(html).toContain("<h1>Title</h1>");
+    expect(html).toContain("<strong>bold</strong>");
+    expect(html).toContain('href="https://example.com"');
+    expect(html).toContain('type="checkbox"');
+    expect(html).toContain("<table>");
+    expect(html).toContain("<title>Title</title>");
+  });
+
+  it("renders math with KaTeX and mermaid as a script-driven block", () => {
+    const html = buildExportHtml(
+      "Euler: $e^{i\\pi}=-1$\n\n```mermaid\ngraph TD; A-->B;\n```\n",
+    );
+    expect(html).toContain("katex");
+    expect(html).toContain('<pre class="mermaid">');
+    expect(html).toContain("mermaid.min.js");
+  });
+
+  it("strips frontmatter and uses its title; omits heavy deps when unused", () => {
+    const { body, title } = parseForExport(
+      "---\ntitle: My Doc\n---\n\n# Ignored\n",
+    );
+    expect(title).toBe("My Doc");
+    expect(body).not.toContain("title: My Doc");
+
+    const plain = buildExportHtml("# Plain\n\nJust text.\n");
+    expect(plain).not.toContain("katex.min.css");
+    expect(plain).not.toContain("mermaid.min.js");
+  });
+
+  it("escapes raw HTML rather than passing it through", () => {
+    const html = buildExportHtml("<script>alert(1)</script>\n");
+    expect(html).not.toContain("<script>alert(1)</script>");
   });
 });
 

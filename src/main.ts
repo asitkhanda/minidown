@@ -86,6 +86,27 @@ async function openFile() {
   setDocument(text, path);
 }
 
+async function exportHtml() {
+  if (!IN_TAURI) return;
+  const { buildExportHtml } = await import("./export");
+  const { save } = await import("@tauri-apps/plugin-dialog");
+  const suggested = currentPath
+    ? currentPath.replace(/\.(md|markdown|txt)$/i, "") + ".html"
+    : "Untitled.html";
+  const path = await save({
+    defaultPath: suggested,
+    filters: [{ name: "HTML", extensions: ["html"] }],
+  });
+  if (!path) return;
+  const { writeTextFile } = await import("@tauri-apps/plugin-fs");
+  await writeTextFile(path, buildExportHtml(view.state.doc.toString()));
+  // Open in the default browser — print to PDF from there
+  const { openPath } = await import("@tauri-apps/plugin-opener");
+  await openPath(path).catch(() => {
+    /* export succeeded; opening is best-effort */
+  });
+}
+
 async function newFile() {
   if (dirty && !currentPath && view.state.doc.length > 0 && IN_TAURI) {
     const { ask } = await import("@tauri-apps/plugin-dialog");
@@ -191,6 +212,7 @@ if (IN_TAURI) {
       newFile: () => void newFile(),
       openFile: () => void openFile(),
       saveFile: (saveAs) => void saveFile(saveAs),
+      exportHtml: () => void exportHtml(),
       undo: () => undo(view),
       redo: () => redo(view),
       toggleFocus,
@@ -225,6 +247,9 @@ document.addEventListener("keydown", (event) => {
   if (key === "s") {
     event.preventDefault();
     void saveFile(event.shiftKey);
+  } else if (key === "e" && event.shiftKey) {
+    event.preventDefault();
+    void exportHtml();
   } else if (key === "o") {
     event.preventDefault();
     void openFile();
