@@ -1,0 +1,70 @@
+name: Minidown
+options:
+  bundleIdPrefix: io.humanx
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+settings:
+  base:
+    MARKETING_VERSION: "0.2.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+packages:
+  swift-markdown:
+    url: https://github.com/swiftlang/swift-markdown.git
+    branch: main
+  Splash:
+    url: https://github.com/JohnSundell/Splash.git
+    from: 0.9.0
+targets:
+  Minidown:
+    type: application
+    platform: macOS
+    sources:
+      - path: Minidown
+    dependencies:
+      - package: swift-markdown
+        product: Markdown
+      - package: Splash
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.humanx.minidown
+        INFOPLIST_KEY_CFBundleDisplayName: minidown
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+        INFOPLIST_KEY_NSHumanReadableCopyright: "Copyright © Asit Khanda. AGPL-3.0."
+        INFOPLIST_KEY_CFBundleShortVersionString: "0.2.0"
+        GENERATE_INFOPLIST_FILE: YES
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_ENTITLEMENTS: Minidown/Minidown.entitlements
+        CODE_SIGN_STYLE: Automatic
+        COMBINE_HIDPI_IMAGES: YES
+        LD_RUNPATH_SEARCH_PATHS: "@executable_path/../Frameworks"
+        ENABLE_TESTABILITY: YES
+    entitlements:
+      path: Minidown/Minidown.entitlements
+  MinidownTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: MinidownTests
+    dependencies:
+      - target: Minidown
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.humanx.minidown.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Minidown.app/Contents/MacOS/Minidown"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+schemes:
+  Minidown:
+    build:
+      targets:
+        Minidown: all
+        MinidownTests: [test]
+    test:
+      targets:
+        - MinidownTests
+    run:
+      config: Debug

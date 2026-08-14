@@ -14,8 +14,8 @@ Click anywhere inside the grid to edit the raw markdown; click away to re-render
 
 | Key | Value |
 | --- | --- |
-| Editor | CodeMirror 6 |
-| Shell | Tauri |
+| Editor | AppKit NSTextView |
+| Shell | SwiftUI |
 
 ## Remote image
 

@@ -37,7 +37,10 @@ Bare URLs autolink: https://tauri.app
 
 - [ ] Click me — the checkbox writes to the file
 - [x] Already finished
-- [ ] Mix them freely
+* [ ] Star marker also works
+1. [ ] Ordered tasks work too
+[ ] Bare checkbox (no list marker) works
+[x] Bare checked item
 
 ---
 

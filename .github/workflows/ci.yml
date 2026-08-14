@@ -10,31 +10,44 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm test
-      - run: npm run build
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+      - name: Generate project
+        working-directory: Minidown
+        run: |
+          brew install xcodegen
+          xcodegen generate
+      - name: Build & test
+        working-directory: Minidown
+        run: |
+          xcodebuild \
+            -scheme Minidown \
+            -destination 'platform=macOS' \
+            -derivedDataPath ./DerivedData \
+            build test
 
   bundle:
-    # Full app bundle — slower, so only on main
     if: github.ref == 'refs/heads/main'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-      - run: npm ci
-      - run: npm run tauri build
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+      - name: Generate project
+        working-directory: Minidown
+        run: |
+          brew install xcodegen
+          xcodegen generate
+      - name: Archive
+        working-directory: Minidown
+        run: |
+          xcodebuild \
+            -scheme Minidown \
+            -destination 'platform=macOS' \
+            -derivedDataPath ./DerivedData \
+            -archivePath ./DerivedData/Minidown.xcarchive \
+            archive
       - uses: actions/upload-artifact@v4
         with:
-          name: minidown-macos
-          path: src-tauri/target/release/bundle/dmg/*.dmg
+          name: minidown-macos-archive
+          path: Minidown/DerivedData/Minidown.xcarchive

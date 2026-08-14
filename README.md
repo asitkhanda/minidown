@@ -18,48 +18,48 @@ lock-in) or see your source (raw syntax everywhere). minidown does neither:
 - **Your Markdown stays yours.** Rendering is presentation-only — minidown
   never rewrites, normalizes, or reformats the text you typed. What you save
   is exactly what you wrote.
-- **Genuinely minimal.** A ~14 MB native app (Tauri + WebKit, not Electron),
-  fast startup, one window, a whisper-quiet status bar.
+- **Genuinely native.** A SwiftUI + AppKit app on macOS — fast startup, one
+  window, a whisper-quiet status bar.
 
 ## Features
 
 ### Live preview
 - Headings, bold, italic, strikethrough, inline code, links, and blockquotes
   render in place; their marks reveal when the cursor touches them
-- Bullets render as `•`, task lists as real clickable checkboxes (clicking
-  writes `[x]` back into the file), `---` as a horizontal rule
-- Code fences render as blocks with per-language syntax highlighting
-  (` ```py ` and ` ```rust ` extension aliases work too)
-- Images render inline — remote URLs and paths relative to the open file
-- Tables render as real grids with column alignment; click to edit the raw
-  pipe syntax, click away to re-render
+- Bullets and task lists; clicking a task checkbox writes `[x]` / `[ ]` back
+  into the file
+- Code fences render as monospace blocks with Splash highlighting; Mermaid
+  fences render as diagrams when the caret is outside
+- Tables render as a real grid when the caret is outside; click in to edit
+  pipe syntax
+- Images render inline (remote URLs and paths relative to the open file)
+- Math (`$…$` / `$$…$$`) renders via KaTeX snapshots when the caret is outside
 
 ### Full syntax
 CommonMark + GFM, plus:
 - **YAML frontmatter** (`---` block at the top, styled as quiet metadata)
 - **Footnotes** — `[^ref]` renders superscript
-- **Math** — `$inline$` and `$$block$$` TeX rendered by KaTeX
-  (`$5 and $10` stay dollars)
-- **Mermaid diagrams** — ` ```mermaid ` fences render as diagrams,
-  lazy-loaded so documents without diagrams pay nothing
+- **Math** — `$inline$` and `$$block$$` (Pandoc dollar rules so `$5 and $10`
+  stay dollars); export renders via KaTeX
+- **Mermaid diagrams** — ` ```mermaid ` fences; export/lazy WebKit rendering
 
 ### Writing environment
 - **Focus mode** (⌘D) — dims everything but the paragraph you're writing
 - **Typewriter scrolling** (⌥⌘T) — your line stays vertically centered while
   you type; clicks and arrow keys never jump the view
 - **Appearance** — system, light, or dark (View → Appearance)
-- **Status bar** — filename and save state; clickable Focus/Typewriter
-  toggles; stats that cycle words → characters → reading time
+- **Status bar** — filename and save state; Focus/Typewriter toggles; stats
+  that cycle words → characters → reading time
 - Native macOS menu bar; autosave once a file has a name
 
 ### Export
 | Format | How | Notes |
 | ------ | --- | ----- |
-| PDF | ⌘P | WebKit print pipeline — math and diagrams render fully, offline |
-| HTML | ⇧⌘E | Single styled file; KaTeX/mermaid CDN links added only when used |
-| Word (.docx) | File → Export | via macOS `textutil`; math/diagrams degrade to text |
+| PDF | ⌘P | WebKit print pipeline |
+| HTML | ⇧⌘E | Single styled file; KaTeX/mermaid CDN links only when used |
+| Word (.docx) | File → Export | via macOS `textutil` |
 | Rich Text (.rtf) | File → Export | via macOS `textutil` |
-| Plain text | File → Export | rendered text without markup |
+| Plain text | File → Export | via macOS `textutil` |
 
 ## Keyboard shortcuts
 
@@ -76,18 +76,22 @@ CommonMark + GFM, plus:
 
 ## Install
 
-**Download:** grab the `.dmg` from the Releases page (unsigned for now — on
-first open, right-click the app → Open).
-
-**Build from source:** requires [Node.js](https://nodejs.org) ≥ 20 and
-[Rust](https://rustup.rs) (stable).
+**Build from source:** requires macOS 14+, Xcode 15+, and
+[XcodeGen](https://github.com/yonaskolb/XcodeGen).
 
 ```sh
 git clone <this-repo>
-cd minidown
-npm install
-npm run tauri dev      # development app
-npm run tauri build    # release .app + .dmg in src-tauri/target/release/bundle/
+cd minidown/Minidown
+xcodegen generate
+open Minidown.xcodeproj
+```
+
+Or from the command line:
+
+```sh
+cd Minidown
+xcodegen generate
+xcodebuild -scheme Minidown -destination 'platform=macOS' build
 ```
 
 ## Try it
@@ -99,32 +103,27 @@ the writing feel.
 
 ## Architecture
 
-- **Shell** — [Tauri 2](https://tauri.app) (`src-tauri/`): window, native
-  menu ([`src/menu.ts`](src/menu.ts)), file dialogs, a single Rust command
-  for `textutil` conversion
-- **Editor** — [CodeMirror 6](https://codemirror.net):
-  [`src/editorSetup.ts`](src/editorSetup.ts) is the full extension stack,
-  shared by the app and the tests
-- **Live preview** — [`src/livePreview.ts`](src/livePreview.ts): decorations
-  built from the Lezer syntax tree. Inline marks hide/reveal in a ViewPlugin;
-  block widgets (tables, block math, mermaid) live in a StateField. The
-  document text is never modified by rendering
-- **Custom syntax** —
-  [`src/markdownExtensions.ts`](src/markdownExtensions.ts): Lezer parser
-  extensions for frontmatter, footnotes, and TeX math
-- **Export** — [`src/export.ts`](src/export.ts): a markdown-it pipeline
-  (used only for export; the editor never round-trips through it)
+- **App shell** — SwiftUI (`Minidown/Minidown/`): window, menus, status bar,
+  document state
+- **Editor** — AppKit `NSTextView` + custom `CollapsingLayoutManager` that
+  zero-widths inactive markdown marks (same idea as CodeMirror replace
+  decorations)
+- **Parsing** — [swift-markdown](https://github.com/swiftlang/swift-markdown)
+  (cmark-gfm) for the document AST; supplemental rules for frontmatter,
+  footnotes, and TeX math
+- **Code fences** — [Splash](https://github.com/JohnSundell/Splash) token colors
+- **Export** — HTML/PDF pipeline plus macOS `textutil` for Word/RTF/plain text
+
+Rendering never rewrites the file. The only text mutations are explicit user
+actions (e.g. clicking a task checkbox).
 
 ## Testing
 
 ```sh
-npm test
+cd Minidown
+xcodegen generate
+xcodebuild -scheme Minidown -destination 'platform=macOS' test
 ```
-
-The vitest suite (`src/editor.test.ts`) covers highlighter wiring, parsing
-of the full syntax set, hide/reveal decoration behavior, block-widget
-replacement, focus/typewriter state, export output, and decorates every
-example document at multiple cursor positions as a crash test.
 
 Native-shell behavior that automation can't reach (menus, dialogs, print,
 scrolling feel) is covered by the manual checklist in
@@ -132,13 +131,12 @@ scrolling feel) is covered by the manual checklist in
 
 ## Known limitations
 
-- Table cells render their contents as plain text in the grid (formatting
-  inside cells shows raw); in-cell editing is planned
-- Math and diagrams degrade to text in Word/RTF export (faithful conversion
-  would require Pandoc)
-- An unclosed frontmatter fence at the top of a new file temporarily styles
-  the document as metadata until the closing `---` is typed
-- Unsigned builds until code signing is set up
+- KaTeX / Mermaid in the editor are WKWebView snapshots (async); first paint may
+  show a short placeholder until the CDN render completes. Export still embeds
+  live KaTeX/Mermaid scripts.
+- Table cell contents in the widget are plain text (no nested bold/code), matching
+  the previous app's grid limitation
+- Code signing / notarization not set up yet
 
 ## License
 
