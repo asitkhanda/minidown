@@ -1,0 +1,76 @@
+:root {
+  --bg: #fbfbfa;
+  --fg: #1c1c1c;
+  --muted: #a3a39c;
+  --accent: #1c7ed6;
+  --selection: rgba(28, 126, 214, 0.16);
+  --syntax: #b0b0a8;
+  --quote: #6f6f68;
+  --code: #c2255c;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1b1b1d;
+    --fg: #d8d8d3;
+    --muted: #5e5e5a;
+    --accent: #4dabf7;
+    --selection: rgba(77, 171, 247, 0.22);
+    --syntax: #4f4f4b;
+    --quote: #8f8f88;
+    --code: #faa2c1;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Drag strip under the macOS traffic lights (titleBarStyle: Overlay) */
+#titlebar {
+  flex: none;
+  height: 44px;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+#editor {
+  flex: 1;
+  min-height: 0;
+}
+
+#editor .cm-editor {
+  height: 100%;
+}
+
+#editor .cm-scroller {
+  overflow: auto;
+  font-family: inherit;
+}
+
+#status {
+  flex: none;
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 16px 10px;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  -webkit-user-select: none;
+  user-select: none;
+}
