@@ -8,6 +8,12 @@
   --quote: #6f6f68;
   --code: #c2255c;
   --code-bg: rgba(27, 27, 29, 0.05);
+  --sx-keyword: #1971c2;
+  --sx-string: #2f9e44;
+  --sx-comment: #9a9a92;
+  --sx-number: #e8590c;
+  --sx-type: #9c36b5;
+  --sx-func: #3b5bdb;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -21,6 +27,12 @@
     --quote: #8f8f88;
     --code: #faa2c1;
     --code-bg: rgba(255, 255, 255, 0.08);
+    --sx-keyword: #4dabf7;
+    --sx-string: #69db7c;
+    --sx-comment: #6e6e68;
+    --sx-number: #ffa94d;
+    --sx-type: #da77f2;
+    --sx-func: #91a7ff;
   }
 }
 
@@ -105,6 +117,67 @@ body {
   margin: 0 0.3em 0 0;
   vertical-align: middle;
   cursor: pointer;
+}
+
+#editor .cm-line.cm-codeblock-line {
+  background: var(--code-bg);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.85em;
+  line-height: 1.6;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+#editor .cm-line.cm-codeblock-first {
+  border-radius: 8px 8px 0 0;
+  padding-top: 0.35em;
+}
+
+#editor .cm-line.cm-codeblock-last {
+  border-radius: 0 0 8px 8px;
+  padding-bottom: 0.35em;
+}
+
+#editor .cm-codeinfo {
+  color: var(--muted);
+  font-size: 0.85em;
+}
+
+#editor img.cm-image {
+  max-width: 100%;
+  max-height: 60vh;
+  border-radius: 6px;
+  vertical-align: text-bottom;
+}
+
+#editor img.cm-image-broken {
+  min-width: 2em;
+  min-height: 1.4em;
+  background: var(--code-bg);
+}
+
+#editor .cm-line.cm-table-line {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.85em;
+}
+
+#editor .cm-table {
+  border-collapse: collapse;
+  margin: 0.4em 0;
+  font-size: 0.95em;
+  cursor: text;
+}
+
+#editor .cm-table th,
+#editor .cm-table td {
+  border: 1px solid var(--syntax);
+  padding: 0.35em 0.8em;
+  text-align: left;
+}
+
+#editor .cm-table th {
+  font-weight: 650;
+  background: var(--code-bg);
 }
 
 #editor .cm-hr {

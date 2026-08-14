@@ -13,35 +13,10 @@ import {
   markdownKeymap,
 } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
-import { syntaxHighlighting, HighlightStyle } from "@codemirror/language";
-import { tags } from "@lezer/highlight";
+import { syntaxHighlighting } from "@codemirror/language";
 import { livePreview } from "./livePreview";
-
-const IN_TAURI = "__TAURI_INTERNALS__" in window;
-
-// ---------- Markdown styling (Phase 0: styled source; live preview comes next) ----------
-
-const mdHighlight = HighlightStyle.define([
-  { tag: tags.heading1, fontSize: "1.55em", fontWeight: "700" },
-  { tag: tags.heading2, fontSize: "1.3em", fontWeight: "700" },
-  { tag: tags.heading3, fontSize: "1.15em", fontWeight: "650" },
-  { tag: tags.heading, fontWeight: "650" },
-  { tag: tags.strong, fontWeight: "700" },
-  { tag: tags.emphasis, fontStyle: "italic" },
-  { tag: tags.strikethrough, textDecoration: "line-through" },
-  {
-    tag: tags.monospace,
-    fontFamily: "ui-monospace, 'SF Mono', Menlo, monospace",
-    fontSize: "0.88em",
-    color: "var(--code)",
-  },
-  { tag: tags.link, color: "var(--accent)" },
-  { tag: tags.url, color: "var(--accent)" },
-  { tag: tags.quote, color: "var(--quote)", fontStyle: "italic" },
-  { tag: tags.processingInstruction, color: "var(--syntax)" },
-  { tag: tags.meta, color: "var(--syntax)" },
-  { tag: tags.contentSeparator, color: "var(--syntax)" },
-]);
+import { mdHighlight, codeHighlight } from "./highlight";
+import { docState, IN_TAURI } from "./docState";
 
 const editorTheme = EditorView.theme({
   "&": { height: "100%", fontSize: "17px", backgroundColor: "transparent" },
@@ -76,6 +51,12 @@ const wordsEl = document.getElementById("status-words")!;
 
 function fileName(): string {
   return currentPath ? currentPath.split("/").pop()! : "Untitled";
+}
+
+function syncDocDir() {
+  docState.dir = currentPath
+    ? currentPath.slice(0, currentPath.lastIndexOf("/")) || null
+    : null;
 }
 
 async function refreshStatus() {
@@ -120,6 +101,7 @@ async function saveFile(saveAs = false) {
     if (!path) return;
   }
   currentPath = path;
+  syncDocDir();
   await writeCurrent(path);
 }
 
@@ -156,6 +138,7 @@ function setDocument(text: string, path: string | null) {
   });
   loadingDoc = false;
   currentPath = path;
+  syncDocDir();
   dirty = false;
   void refreshStatus();
   updateWordCount();
@@ -176,6 +159,7 @@ const view = new EditorView({
       placeholder("Start writing…"),
       markdown({ base: markdownLanguage, codeLanguages: languages }),
       livePreview,
+      syntaxHighlighting(codeHighlight),
       syntaxHighlighting(mdHighlight, { fallback: true }),
       keymap.of([...markdownKeymap, ...defaultKeymap, ...historyKeymap]),
       editorTheme,

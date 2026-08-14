@@ -1,5 +1,6 @@
 import { syntaxTree } from "@codemirror/language";
-import type { Range } from "@codemirror/state";
+import { StateField } from "@codemirror/state";
+import type { EditorState, Range } from "@codemirror/state";
 import {
   Decoration,
   DecorationSet,
@@ -8,6 +9,9 @@ import {
   ViewUpdate,
   WidgetType,
 } from "@codemirror/view";
+import type { SyntaxNode } from "@lezer/common";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { docState, IN_TAURI } from "./docState";
 
 // Live preview: markdown syntax renders in place and its marks hide whenever
 // the selection is outside the construct. The document itself never changes —
@@ -15,7 +19,9 @@ import {
 
 const hide = Decoration.replace({});
 const inlineCode = Decoration.mark({ class: "cm-inlinecode" });
+const codeInfo = Decoration.mark({ class: "cm-codeinfo" });
 const quoteLine = Decoration.line({ class: "cm-blockquote-line" });
+const tableLine = Decoration.line({ class: "cm-table-line" });
 const headingLines = [1, 2, 3, 4, 5, 6].map((level) =>
   Decoration.line({ class: `cm-heading-line cm-h${level}-line` }),
 );
@@ -59,6 +65,37 @@ class CheckboxWidget extends WidgetType {
       });
     });
     return box;
+  }
+}
+
+function resolveImageSrc(url: string): string | null {
+  if (/^(https?:|data:|asset:)/.test(url)) return url;
+  if (!IN_TAURI || !docState.dir) return null;
+  const abs = url.startsWith("/") ? url : `${docState.dir}/${url}`;
+  return convertFileSrc(abs);
+}
+
+class ImageWidget extends WidgetType {
+  constructor(
+    readonly src: string,
+    readonly alt: string,
+  ) {
+    super();
+  }
+  eq(other: ImageWidget) {
+    return other.src === this.src && other.alt === this.alt;
+  }
+  toDOM() {
+    const img = document.createElement("img");
+    img.className = "cm-image";
+    img.src = this.src;
+    img.alt = this.alt;
+    img.onerror = () => img.classList.add("cm-image-broken");
+    return img;
+  }
+  // Let the editor handle clicks so the cursor lands in the syntax and reveals it
+  ignoreEvent() {
+    return false;
   }
 }
 
@@ -132,7 +169,58 @@ function buildDecorations(view: EditorView): DecorationSet {
               !touches(parent.from, parent.to)
             ) {
               deco.push(hide.range(node.from, node.to));
+            } else if (
+              parent?.name === "FencedCode" &&
+              !lineActive(node.from)
+            ) {
+              deco.push(hide.range(node.from, node.to));
             }
+            break;
+          }
+
+          case "CodeInfo": {
+            deco.push(codeInfo.range(node.from, node.to));
+            break;
+          }
+
+          case "FencedCode": {
+            const first = doc.lineAt(node.from).number;
+            const last = doc.lineAt(node.to).number;
+            for (let n = first; n <= last; n++) {
+              let cls = "cm-codeblock-line";
+              if (n === first) cls += " cm-codeblock-first";
+              if (n === last) cls += " cm-codeblock-last";
+              deco.push(Decoration.line({ class: cls }).range(doc.line(n).from));
+            }
+            break;
+          }
+
+          case "Table": {
+            const first = doc.lineAt(node.from).number;
+            const last = doc.lineAt(node.to).number;
+            for (let n = first; n <= last; n++) {
+              deco.push(tableLine.range(doc.line(n).from));
+            }
+            break;
+          }
+
+          case "Image": {
+            if (lineActive(node.from)) break;
+            const urlNode = node.node.getChild("URL");
+            if (!urlNode) break;
+            const src = resolveImageSrc(doc.sliceString(urlNode.from, urlNode.to));
+            if (!src) break;
+            const marks = node.node.getChildren("LinkMark");
+            const alt =
+              marks.length >= 2
+                ? doc.sliceString(marks[0].to, marks[1].from)
+                : "";
+            deco.push(
+              Decoration.replace({ widget: new ImageWidget(src, alt) }).range(
+                node.from,
+                node.to,
+              ),
+            );
             break;
           }
 
@@ -208,7 +296,7 @@ function buildDecorations(view: EditorView): DecorationSet {
   return Decoration.set(deco, true);
 }
 
-export const livePreview = ViewPlugin.fromClass(
+const inlinePreview = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
     constructor(view: EditorView) {
@@ -222,3 +310,113 @@ export const livePreview = ViewPlugin.fromClass(
   },
   { decorations: (plugin) => plugin.decorations },
 );
+
+// ---------- Tables ----------
+// Block-replacing decorations must come from a StateField, not a ViewPlugin.
+// A table renders as a real grid whenever the selection is outside it; click
+// (or move the cursor) into it and it reverts to raw, monospace-aligned text.
+
+interface TableData {
+  header: string[];
+  aligns: (string | null)[];
+  rows: string[][];
+}
+
+function parseTable(state: EditorState, table: SyntaxNode): TableData {
+  const cellsOf = (row: SyntaxNode) =>
+    row
+      .getChildren("TableCell")
+      .map((cell) => state.sliceDoc(cell.from, cell.to).trim());
+  const data: TableData = { header: [], aligns: [], rows: [] };
+  for (let child = table.firstChild; child; child = child.nextSibling) {
+    if (child.name === "TableHeader") {
+      data.header = cellsOf(child);
+    } else if (child.name === "TableDelimiter") {
+      data.aligns = state
+        .sliceDoc(child.from, child.to)
+        .split("|")
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0)
+        .map((part) => {
+          const left = part.startsWith(":");
+          const right = part.endsWith(":");
+          return left && right ? "center" : right ? "right" : left ? "left" : null;
+        });
+    } else if (child.name === "TableRow") {
+      data.rows.push(cellsOf(child));
+    }
+  }
+  return data;
+}
+
+class TableWidget extends WidgetType {
+  readonly key: string;
+  constructor(readonly data: TableData) {
+    super();
+    this.key = JSON.stringify(data);
+  }
+  eq(other: TableWidget) {
+    return other.key === this.key;
+  }
+  toDOM() {
+    const table = document.createElement("table");
+    table.className = "cm-table";
+    const addRow = (
+      parent: HTMLElement,
+      cells: string[],
+      tag: "th" | "td",
+    ) => {
+      const tr = document.createElement("tr");
+      cells.forEach((text, i) => {
+        const cell = document.createElement(tag);
+        cell.textContent = text;
+        const align = this.data.aligns[i];
+        if (align) cell.style.textAlign = align;
+        tr.appendChild(cell);
+      });
+      parent.appendChild(tr);
+    };
+    const thead = document.createElement("thead");
+    addRow(thead, this.data.header, "th");
+    table.appendChild(thead);
+    const tbody = document.createElement("tbody");
+    for (const row of this.data.rows) addRow(tbody, row, "td");
+    table.appendChild(tbody);
+    return table;
+  }
+  // Clicks fall through to the editor, putting the cursor in the raw table
+  ignoreEvent() {
+    return false;
+  }
+}
+
+function buildTableDecorations(state: EditorState): DecorationSet {
+  const deco: Range<Decoration>[] = [];
+  const touches = (from: number, to: number) =>
+    state.selection.ranges.some((r) => r.from <= to && r.to >= from);
+  syntaxTree(state).iterate({
+    enter: (node) => {
+      if (node.name !== "Table") return;
+      if (touches(node.from, node.to)) return false;
+      deco.push(
+        Decoration.replace({
+          widget: new TableWidget(parseTable(state, node.node)),
+          block: true,
+        }).range(node.from, node.to),
+      );
+      return false;
+    },
+  });
+  return Decoration.set(deco, true);
+}
+
+const tableField = StateField.define<DecorationSet>({
+  create: buildTableDecorations,
+  update(value, tr) {
+    if (tr.docChanged || tr.selection) return buildTableDecorations(tr.state);
+    return value;
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
+
+export const livePreview = [inlinePreview, tableField];
