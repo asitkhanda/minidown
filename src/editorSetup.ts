@@ -30,6 +30,8 @@ function codeLanguage(info: string): LanguageDescription | null {
   );
 }
 import { livePreview } from "./livePreview";
+import { focusMode } from "./focusMode";
+import { typewriter } from "./typewriter";
 import { mdHighlight, codeHighlight } from "./highlight";
 
 const editorTheme = EditorView.theme({
@@ -65,6 +67,8 @@ export const editorExtensions: Extension[] = [
   placeholder("Start writing…"),
   markdown({ base: markdownLanguage, codeLanguages: codeLanguage }),
   livePreview,
+  focusMode,
+  typewriter,
   syntaxHighlighting(mdHighlight),
   syntaxHighlighting(codeHighlight),
   keymap.of([...markdownKeymap, ...defaultKeymap, ...historyKeymap]),

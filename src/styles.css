@@ -16,8 +16,11 @@
   --sx-func: #3b5bdb;
 }
 
+/* Dark palette. Applied by system preference unless overridden with
+   data-theme="light"; duplicated below for the explicit dark override.
+   KEEP BOTH BLOCKS IN SYNC. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #1b1b1d;
     --fg: #d8d8d3;
     --muted: #5e5e5a;
@@ -34,6 +37,24 @@
     --sx-type: #da77f2;
     --sx-func: #91a7ff;
   }
+}
+
+:root[data-theme="dark"] {
+  --bg: #1b1b1d;
+  --fg: #d8d8d3;
+  --muted: #5e5e5a;
+  --accent: #4dabf7;
+  --selection: rgba(77, 171, 247, 0.22);
+  --syntax: #4f4f4b;
+  --quote: #8f8f88;
+  --code: #faa2c1;
+  --code-bg: rgba(255, 255, 255, 0.08);
+  --sx-keyword: #4dabf7;
+  --sx-string: #69db7c;
+  --sx-comment: #6e6e68;
+  --sx-number: #ffa94d;
+  --sx-type: #da77f2;
+  --sx-func: #91a7ff;
 }
 
 * {
@@ -75,6 +96,20 @@ body {
 #editor .cm-scroller {
   overflow: auto;
   font-family: inherit;
+}
+
+/* ---------- Focus & typewriter ---------- */
+
+#editor .cm-line {
+  transition: opacity 0.25s ease;
+}
+
+#editor .cm-line.cm-dim-line {
+  opacity: 0.3;
+}
+
+#editor.typewriter .cm-content {
+  padding-top: 45vh;
 }
 
 /* ---------- Live preview ---------- */

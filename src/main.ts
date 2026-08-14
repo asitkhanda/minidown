@@ -1,6 +1,9 @@
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+import { undo, redo } from "@codemirror/commands";
 import { editorExtensions } from "./editorSetup";
+import { focusModeField, setFocusMode } from "./focusMode";
+import { typewriterField, setTypewriter } from "./typewriter";
 import { docState, IN_TAURI } from "./docState";
 
 // ---------- Document / file state ----------
@@ -133,9 +136,92 @@ const view = new EditorView({
   }),
 });
 
+// ---------- View settings (persisted) ----------
+
+type ThemePref = "system" | "light" | "dark";
+
+function loadPref(key: string, fallback: string): string {
+  return localStorage.getItem(key) ?? fallback;
+}
+
+function applyTheme(theme: ThemePref) {
+  if (theme === "system") {
+    delete document.documentElement.dataset.theme;
+  } else {
+    document.documentElement.dataset.theme = theme;
+  }
+  localStorage.setItem("theme", theme);
+}
+
+function toggleFocus(): boolean {
+  const on = !view.state.field(focusModeField);
+  view.dispatch({ effects: setFocusMode.of(on) });
+  localStorage.setItem("focus", String(on));
+  return on;
+}
+
+function toggleTypewriter(): boolean {
+  const on = !view.state.field(typewriterField);
+  view.dispatch({ effects: setTypewriter.of(on) });
+  document.getElementById("editor")!.classList.toggle("typewriter", on);
+  localStorage.setItem("typewriter", String(on));
+  if (on) {
+    view.dispatch({
+      effects: EditorView.scrollIntoView(view.state.selection.main.head, {
+        y: "center",
+      }),
+    });
+  }
+  return on;
+}
+
+const initialTheme = loadPref("theme", "system") as ThemePref;
+applyTheme(initialTheme);
+if (loadPref("focus", "false") === "true") toggleFocus();
+if (loadPref("typewriter", "false") === "true") toggleTypewriter();
+
+// ---------- Menu & shortcuts ----------
+
+if (IN_TAURI) {
+  void (async () => {
+    try {
+      const { setupMenu } = await import("./menu");
+      await setupMenu(
+    {
+      newFile: () => void newFile(),
+      openFile: () => void openFile(),
+      saveFile: (saveAs) => void saveFile(saveAs),
+      undo: () => undo(view),
+      redo: () => redo(view),
+      toggleFocus,
+      toggleTypewriter,
+      setTheme: applyTheme,
+    },
+        {
+          focus: view.state.field(focusModeField),
+          typewriter: view.state.field(typewriterField),
+          theme: initialTheme,
+        },
+      );
+    } catch (error) {
+      // Keyboard shortcuts still work without a menu — never block startup
+      console.error("menu setup failed", error);
+    }
+  })();
+}
+
+// Fallback shortcuts for when no native menu intercepts them (browser dev).
+// In the app the menu accelerators consume these keys first.
 document.addEventListener("keydown", (event) => {
-  if (!event.metaKey || event.ctrlKey || event.altKey) return;
+  if (!event.metaKey || event.ctrlKey) return;
   const key = event.key.toLowerCase();
+  if (event.altKey) {
+    if (key === "t" || key === "†") {
+      event.preventDefault();
+      toggleTypewriter();
+    }
+    return;
+  }
   if (key === "s") {
     event.preventDefault();
     void saveFile(event.shiftKey);
@@ -145,6 +231,9 @@ document.addEventListener("keydown", (event) => {
   } else if (key === "n") {
     event.preventDefault();
     void newFile();
+  } else if (key === "d") {
+    event.preventDefault();
+    toggleFocus();
   }
 });
 

@@ -22,14 +22,17 @@ npm run tauri dev
 
 ## Shortcuts
 
-| Action  | Keys |
-| ------- | ---- |
-| New     | ⌘N   |
-| Open    | ⌘O   |
-| Save    | ⌘S   |
-| Save As | ⇧⌘S  |
+| Action               | Keys |
+| -------------------- | ---- |
+| New                  | ⌘N   |
+| Open                 | ⌘O   |
+| Save                 | ⌘S   |
+| Save As              | ⇧⌘S  |
+| Focus mode           | ⌘D   |
+| Typewriter scrolling | ⌥⌘T  |
 
-Files autosave once they have a name.
+Files autosave once they have a name. Appearance (system/light/dark)
+lives in the View menu.
 
 ## License
 

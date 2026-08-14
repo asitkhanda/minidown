@@ -5,6 +5,13 @@ import { ensureSyntaxTree, highlightingFor } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
 import { editorExtensions } from "./editorSetup";
 import { buildDecorations, buildTableDecorations } from "./livePreview";
+import {
+  focusRange,
+  buildFocusDecorations,
+  setFocusMode,
+  focusModeField,
+} from "./focusMode";
+import { typewriterField, setTypewriter } from "./typewriter";
 
 function makeState(doc: string, cursor: number): EditorState {
   const state = EditorState.create({
@@ -151,11 +158,56 @@ describe("live preview hide/reveal", () => {
   });
 });
 
+describe("focus mode", () => {
+  const doc = "one\ntwo\n\nthree\nfour\n\nfive";
+  // paragraphs: [0,7] "one/two", [9,18] "three/four", [20,24] "five"
+
+  it("finds the paragraph around the cursor", () => {
+    const state = makeState(doc, 12); // inside "three"
+    expect(focusRange(state, 12)).toEqual({ from: 9, to: 19 });
+    expect(focusRange(state, 0)).toEqual({ from: 0, to: 7 });
+    expect(focusRange(state, doc.length)).toEqual({ from: 21, to: 25 });
+  });
+
+  it("dims exactly the lines outside the active paragraph when enabled", () => {
+    const base = makeState(doc, 12);
+    expect(base.field(focusModeField)).toBe(false);
+    const enabled = base.update({ effects: setFocusMode.of(true) }).state;
+    expect(enabled.field(focusModeField)).toBe(true);
+
+    const set = buildFocusDecorations(fakeView(enabled));
+    const dimmedAt: number[] = [];
+    const iter = set.iter();
+    while (iter.value) {
+      dimmedAt.push(iter.from);
+      iter.next();
+    }
+    // Lines "one", "two", blank, blank, "five" dim; "three"/"four" stay
+    expect(dimmedAt).toEqual([0, 4, 8, 20, 21]);
+  });
+
+  it("produces no decorations when disabled", () => {
+    const state = makeState(doc, 12);
+    expect(buildFocusDecorations(fakeView(state)).size).toBe(0);
+  });
+});
+
+describe("typewriter mode", () => {
+  it("toggles via effect and persists in state", () => {
+    const state = makeState("hello", 0);
+    expect(state.field(typewriterField)).toBe(false);
+    const on = state.update({ effects: setTypewriter.of(true) }).state;
+    expect(on.field(typewriterField)).toBe(true);
+    const off = on.update({ effects: setTypewriter.of(false) }).state;
+    expect(off.field(typewriterField)).toBe(false);
+  });
+});
+
 describe("example documents", () => {
   it("decorate without throwing, at every cursor position group", async () => {
     const fs = await import("node:fs");
     const path = await import("node:path");
-    const dir = path.resolve(__dirname, "../examples");
+    const dir = path.resolve(process.cwd(), "examples");
     const files = fs
       .readdirSync(dir)
       .filter((name: string) => name.endsWith(".md"));
