@@ -5,6 +5,7 @@ import { editorExtensions } from "./editorSetup";
 import { focusModeField, setFocusMode } from "./focusMode";
 import { typewriterField, setTypewriter } from "./typewriter";
 import { docState, IN_TAURI } from "./docState";
+import { formatStats, nextStatsMode, type StatsMode } from "./stats";
 
 // ---------- Document / file state ----------
 
@@ -35,9 +36,10 @@ async function refreshStatus() {
   }
 }
 
+let statsMode = (localStorage.getItem("statsMode") ?? "words") as StatsMode;
+
 function updateWordCount() {
-  const words = view.state.doc.toString().match(/\S+/g)?.length ?? 0;
-  wordsEl.textContent = `${words.toLocaleString()} ${words === 1 ? "word" : "words"}`;
+  wordsEl.textContent = formatStats(view.state.doc.toString(), statsMode);
 }
 
 // ---------- File operations (Tauri only) ----------
@@ -174,10 +176,20 @@ function applyTheme(theme: ThemePref) {
   localStorage.setItem("theme", theme);
 }
 
+function syncStatusToggles() {
+  document
+    .getElementById("btn-focus")!
+    .classList.toggle("active", view.state.field(focusModeField));
+  document
+    .getElementById("btn-typewriter")!
+    .classList.toggle("active", view.state.field(typewriterField));
+}
+
 function toggleFocus(): boolean {
   const on = !view.state.field(focusModeField);
   view.dispatch({ effects: setFocusMode.of(on) });
   localStorage.setItem("focus", String(on));
+  syncStatusToggles();
   return on;
 }
 
@@ -186,6 +198,7 @@ function toggleTypewriter(): boolean {
   view.dispatch({ effects: setTypewriter.of(on) });
   document.getElementById("editor")!.classList.toggle("typewriter", on);
   localStorage.setItem("typewriter", String(on));
+  syncStatusToggles();
   if (on) {
     view.dispatch({
       effects: EditorView.scrollIntoView(view.state.selection.main.head, {
@@ -262,6 +275,26 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
+// Status bar tools
+wordsEl.addEventListener("click", () => {
+  statsMode = nextStatsMode(statsMode);
+  localStorage.setItem("statsMode", statsMode);
+  updateWordCount();
+});
+document
+  .getElementById("btn-focus")!
+  .addEventListener("click", () => toggleFocus());
+document
+  .getElementById("btn-typewriter")!
+  .addEventListener("click", () => toggleTypewriter());
+const exportBtn = document.getElementById("btn-export")!;
+if (IN_TAURI) {
+  exportBtn.addEventListener("click", () => void exportHtml());
+} else {
+  exportBtn.style.display = "none";
+}
+
+syncStatusToggles();
 void refreshStatus();
 updateWordCount();
 view.focus();

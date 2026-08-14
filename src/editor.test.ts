@@ -13,6 +13,7 @@ import {
 } from "./focusMode";
 import { typewriterField, setTypewriter } from "./typewriter";
 import { buildExportHtml, parseForExport } from "./export";
+import { formatStats, nextStatsMode } from "./stats";
 
 function makeState(doc: string, cursor: number): EditorState {
   const state = EditorState.create({
@@ -322,6 +323,25 @@ describe("html export", () => {
   it("escapes raw HTML rather than passing it through", () => {
     const html = buildExportHtml("<script>alert(1)</script>\n");
     expect(html).not.toContain("<script>alert(1)</script>");
+  });
+});
+
+describe("status bar stats", () => {
+  it("formats words, characters, and reading time", () => {
+    const text = "one two three";
+    expect(formatStats(text, "words")).toBe("3 words");
+    expect(formatStats("one", "words")).toBe("1 word");
+    expect(formatStats(text, "chars")).toBe("13 characters");
+    expect(formatStats(text, "time")).toBe("1 min read");
+    expect(formatStats("", "time")).toBe("0 min read");
+    const long = Array(500).fill("word").join(" ");
+    expect(formatStats(long, "time")).toBe("3 min read");
+  });
+
+  it("cycles through the three modes", () => {
+    expect(nextStatsMode("words")).toBe("chars");
+    expect(nextStatsMode("chars")).toBe("time");
+    expect(nextStatsMode("time")).toBe("words");
   });
 });
 

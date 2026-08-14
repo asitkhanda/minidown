@@ -261,10 +261,37 @@ body {
   flex: none;
   display: flex;
   justify-content: space-between;
+  align-items: baseline;
   padding: 6px 16px 10px;
   font-size: 11px;
   letter-spacing: 0.02em;
   color: var(--muted);
   -webkit-user-select: none;
   user-select: none;
+}
+
+#status-tools {
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+}
+
+.status-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.status-btn:hover {
+  color: var(--fg);
+}
+
+.status-btn.active {
+  color: var(--accent);
 }
