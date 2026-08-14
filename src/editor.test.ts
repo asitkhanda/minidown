@@ -151,6 +151,28 @@ describe("live preview hide/reveal", () => {
   });
 });
 
+describe("example documents", () => {
+  it("decorate without throwing, at every cursor position group", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const dir = path.resolve(__dirname, "../examples");
+    const files = fs
+      .readdirSync(dir)
+      .filter((name: string) => name.endsWith(".md"));
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      const doc = fs.readFileSync(path.join(dir, file), "utf8");
+      // A spread of cursor positions exercises active/inactive paths
+      const positions = [0, Math.floor(doc.length / 2), doc.length];
+      for (const pos of positions) {
+        const state = makeState(doc, pos);
+        expect(() => buildDecorations(fakeView(state)), `${file}@${pos}`).not.toThrow();
+        expect(() => buildTableDecorations(state), `${file}@${pos}`).not.toThrow();
+      }
+    }
+  });
+});
+
 describe("table rendering", () => {
   const doc = "| a | b |\n| --- | --- |\n| 1 | 2 |\n\nafter";
 
