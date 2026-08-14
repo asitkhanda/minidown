@@ -15,6 +15,7 @@ import {
 import { languages } from "@codemirror/language-data";
 import { syntaxHighlighting, HighlightStyle } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
+import { livePreview } from "./livePreview";
 
 const IN_TAURI = "__TAURI_INTERNALS__" in window;
 
@@ -174,6 +175,7 @@ const view = new EditorView({
       EditorView.lineWrapping,
       placeholder("Start writing…"),
       markdown({ base: markdownLanguage, codeLanguages: languages }),
+      livePreview,
       syntaxHighlighting(mdHighlight, { fallback: true }),
       keymap.of([...markdownKeymap, ...defaultKeymap, ...historyKeymap]),
       editorTheme,

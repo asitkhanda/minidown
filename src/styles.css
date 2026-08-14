@@ -7,6 +7,7 @@
   --syntax: #b0b0a8;
   --quote: #6f6f68;
   --code: #c2255c;
+  --code-bg: rgba(27, 27, 29, 0.05);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -19,6 +20,7 @@
     --syntax: #4f4f4b;
     --quote: #8f8f88;
     --code: #faa2c1;
+    --code-bg: rgba(255, 255, 255, 0.08);
   }
 }
 
@@ -61,6 +63,57 @@ body {
 #editor .cm-scroller {
   overflow: auto;
   font-family: inherit;
+}
+
+/* ---------- Live preview ---------- */
+
+#editor .cm-line.cm-h1-line {
+  padding-top: 1em;
+  padding-bottom: 0.15em;
+}
+
+#editor .cm-line.cm-h2-line {
+  padding-top: 0.75em;
+}
+
+#editor .cm-line.cm-h3-line,
+#editor .cm-line.cm-h4-line,
+#editor .cm-line.cm-h5-line,
+#editor .cm-line.cm-h6-line {
+  padding-top: 0.5em;
+}
+
+#editor .cm-line.cm-blockquote-line {
+  border-left: 3px solid var(--syntax);
+  padding-left: 1rem;
+}
+
+#editor .cm-inlinecode {
+  background: var(--code-bg);
+  border-radius: 4px;
+  padding: 0.1em 0.2em;
+}
+
+#editor .cm-bullet {
+  color: var(--syntax);
+}
+
+#editor input.cm-task {
+  accent-color: var(--accent);
+  width: 0.9em;
+  height: 0.9em;
+  margin: 0 0.3em 0 0;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+#editor .cm-hr {
+  display: inline-block;
+  width: 100%;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--syntax);
+  vertical-align: middle;
 }
 
 #status {
