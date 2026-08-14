@@ -114,6 +114,18 @@ ul.contains-task-list { list-style: none; padding-left: 0.5em; }
 @media print { body { background: #fff; color: #000; } }
 `;
 
+export function renderBody(source: string): {
+  html: string;
+  title: string | null;
+  usesMermaid: boolean;
+} {
+  const { body, title, usesMermaid } = parseForExport(source);
+  return { html: md.render(body), title, usesMermaid };
+}
+
+// The export stylesheet retargeted at the in-app print container
+export const PRINT_CSS = EXPORT_CSS.replace(/body/g, "#print-root");
+
 export function buildExportHtml(source: string): string {
   const { body, title, usesMath, usesMermaid } = parseForExport(source);
   const rendered = md.render(body);

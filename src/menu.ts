@@ -12,7 +12,7 @@ export interface MenuHandlers {
   newFile(): void;
   openFile(): void;
   saveFile(saveAs?: boolean): void;
-  exportHtml(): void;
+  exportAs(format: "html" | "pdf" | "docx" | "rtf" | "txt"): void;
   undo(): void;
   redo(): void;
   toggleFocus(): boolean;
@@ -72,10 +72,32 @@ export async function setupMenu(
         action: () => handlers.saveFile(true),
       }),
       await separator(),
-      await MenuItem.new({
-        text: "Export as HTML…",
-        accelerator: "Shift+CmdOrCtrl+E",
-        action: () => handlers.exportHtml(),
+      await Submenu.new({
+        text: "Export",
+        items: [
+          await MenuItem.new({
+            text: "PDF (Print)…",
+            accelerator: "CmdOrCtrl+P",
+            action: () => handlers.exportAs("pdf"),
+          }),
+          await MenuItem.new({
+            text: "HTML…",
+            accelerator: "Shift+CmdOrCtrl+E",
+            action: () => handlers.exportAs("html"),
+          }),
+          await MenuItem.new({
+            text: "Word (.docx)…",
+            action: () => handlers.exportAs("docx"),
+          }),
+          await MenuItem.new({
+            text: "Rich Text (.rtf)…",
+            action: () => handlers.exportAs("rtf"),
+          }),
+          await MenuItem.new({
+            text: "Plain Text…",
+            action: () => handlers.exportAs("txt"),
+          }),
+        ],
       }),
     ],
   });

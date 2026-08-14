@@ -88,25 +88,79 @@ async function openFile() {
   setDocument(text, path);
 }
 
-async function exportHtml() {
+export type ExportFormat = "html" | "pdf" | "docx" | "rtf" | "txt";
+
+const EXPORT_FILTERS: Record<
+  Exclude<ExportFormat, "pdf">,
+  { name: string; extensions: string[] }
+> = {
+  html: { name: "HTML", extensions: ["html"] },
+  docx: { name: "Word Document", extensions: ["docx"] },
+  rtf: { name: "Rich Text", extensions: ["rtf"] },
+  txt: { name: "Plain Text", extensions: ["txt"] },
+};
+
+// PDF goes through WebKit's own print pipeline: render into the hidden
+// print container (math via bundled KaTeX, diagrams pre-rendered), then
+// open the macOS print dialog — Save as PDF lives there natively.
+async function printPdf() {
+  const { renderBody, PRINT_CSS } = await import("./export");
+  const { html, usesMermaid } = renderBody(view.state.doc.toString());
+  const root = document.getElementById("print-root")!;
+  root.innerHTML = `<style>${PRINT_CSS}</style>${html}`;
+  if (usesMermaid) {
+    try {
+      const mermaid = (await import("mermaid")).default;
+      mermaid.initialize({ startOnLoad: false, theme: "neutral" });
+      await mermaid.run({
+        nodes: Array.from(root.querySelectorAll("pre.mermaid")),
+      });
+    } catch {
+      // diagram source prints as text
+    }
+  }
+  try {
+    const { getCurrentWebviewWindow } = await import(
+      "@tauri-apps/api/webviewWindow"
+    );
+    const win = getCurrentWebviewWindow() as unknown as {
+      print?: () => Promise<void>;
+    };
+    if (typeof win.print === "function") {
+      await win.print();
+      return;
+    }
+  } catch {
+    // fall through to the DOM print call
+  }
+  window.print();
+}
+
+async function exportAs(format: ExportFormat) {
   if (!IN_TAURI) return;
-  const { buildExportHtml } = await import("./export");
+  if (format === "pdf") return printPdf();
+  const filter = EXPORT_FILTERS[format];
   const { save } = await import("@tauri-apps/plugin-dialog");
-  const suggested = currentPath
-    ? currentPath.replace(/\.(md|markdown|txt)$/i, "") + ".html"
-    : "Untitled.html";
+  const base = currentPath
+    ? currentPath.replace(/\.(md|markdown|txt)$/i, "")
+    : "Untitled";
   const path = await save({
-    defaultPath: suggested,
-    filters: [{ name: "HTML", extensions: ["html"] }],
+    defaultPath: `${base}.${filter.extensions[0]}`,
+    filters: [filter],
   });
   if (!path) return;
-  const { writeTextFile } = await import("@tauri-apps/plugin-fs");
-  await writeTextFile(path, buildExportHtml(view.state.doc.toString()));
-  // Open in the default browser — print to PDF from there
+  const { buildExportHtml } = await import("./export");
+  const html = buildExportHtml(view.state.doc.toString());
+  if (format === "html") {
+    const { writeTextFile } = await import("@tauri-apps/plugin-fs");
+    await writeTextFile(path, html);
+  } else {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("export_via_textutil", { html, output: path, format });
+  }
+  // Show the result — best-effort
   const { openPath } = await import("@tauri-apps/plugin-opener");
-  await openPath(path).catch(() => {
-    /* export succeeded; opening is best-effort */
-  });
+  await openPath(path).catch(() => {});
 }
 
 async function newFile() {
@@ -225,7 +279,7 @@ if (IN_TAURI) {
       newFile: () => void newFile(),
       openFile: () => void openFile(),
       saveFile: (saveAs) => void saveFile(saveAs),
-      exportHtml: () => void exportHtml(),
+      exportAs: (format) => void exportAs(format as ExportFormat),
       undo: () => undo(view),
       redo: () => redo(view),
       toggleFocus,
@@ -262,7 +316,10 @@ document.addEventListener("keydown", (event) => {
     void saveFile(event.shiftKey);
   } else if (key === "e" && event.shiftKey) {
     event.preventDefault();
-    void exportHtml();
+    void exportAs("html");
+  } else if (key === "p") {
+    event.preventDefault();
+    void exportAs("pdf");
   } else if (key === "o") {
     event.preventDefault();
     void openFile();
@@ -288,8 +345,24 @@ document
   .getElementById("btn-typewriter")!
   .addEventListener("click", () => toggleTypewriter());
 const exportBtn = document.getElementById("btn-export")!;
+const exportMenu = document.getElementById("export-menu")!;
 if (IN_TAURI) {
-  exportBtn.addEventListener("click", () => void exportHtml());
+  exportBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    exportMenu.hidden = !exportMenu.hidden;
+  });
+  exportMenu.addEventListener("click", (event) => {
+    const format = (event.target as HTMLElement).dataset.fmt as
+      | ExportFormat
+      | undefined;
+    if (format) {
+      exportMenu.hidden = true;
+      void exportAs(format);
+    }
+  });
+  document.addEventListener("click", () => {
+    exportMenu.hidden = true;
+  });
 } else {
   exportBtn.style.display = "none";
 }

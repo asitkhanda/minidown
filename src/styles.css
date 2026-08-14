@@ -295,3 +295,56 @@ body {
 .status-btn.active {
   color: var(--accent);
 }
+
+#export-menu {
+  position: fixed;
+  right: 12px;
+  bottom: 34px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  background: var(--bg);
+  border: 1px solid var(--syntax);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+  font-size: 11px;
+}
+
+#export-menu[hidden] {
+  display: none;
+}
+
+#export-menu .status-btn {
+  text-align: left;
+  padding: 5px 10px;
+  border-radius: 5px;
+}
+
+#export-menu .status-btn:hover {
+  background: var(--code-bg);
+  color: var(--fg);
+}
+
+/* Print pipeline: the app chrome disappears, the rendered doc appears */
+#print-root {
+  display: none;
+}
+
+@media print {
+  body {
+    display: block;
+    overflow: visible;
+    background: #fff;
+  }
+  #titlebar,
+  #editor,
+  #status,
+  #export-menu {
+    display: none !important;
+  }
+  #print-root {
+    display: block;
+  }
+}

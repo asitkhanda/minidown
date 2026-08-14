@@ -24,11 +24,7 @@
         >
           Typewriter
         </button>
-        <button
-          id="btn-export"
-          class="status-btn"
-          title="Export as HTML (⇧⌘E)"
-        >
+        <button id="btn-export" class="status-btn" title="Export…">
           Export
         </button>
         <button
@@ -40,5 +36,13 @@
         </button>
       </div>
     </footer>
+    <div id="export-menu" hidden>
+      <button class="status-btn" data-fmt="pdf">PDF (Print)… ⌘P</button>
+      <button class="status-btn" data-fmt="html">HTML… ⇧⌘E</button>
+      <button class="status-btn" data-fmt="docx">Word (.docx)…</button>
+      <button class="status-btn" data-fmt="rtf">Rich Text (.rtf)…</button>
+      <button class="status-btn" data-fmt="txt">Plain Text…</button>
+    </div>
+    <div id="print-root"></div>
   </body>
 </html>

@@ -19,7 +19,8 @@ no rewriting your files, no feature bloat.
   appearance
 - **Mac-native** — menu bar, ⌘-shortcuts, autosave, ~10 MB app (Tauri, not
   Electron)
-- **Export** — standalone styled HTML (print that to PDF from any browser)
+- **Export** — PDF (native print pipeline, math and diagrams included),
+  standalone styled HTML, Word (.docx), RTF, and plain text
 
 ## Shortcuts
 
@@ -29,6 +30,7 @@ no rewriting your files, no feature bloat.
 | Open                 | ⌘O   |
 | Save                 | ⌘S   |
 | Save As              | ⇧⌘S  |
+| Export as PDF        | ⌘P   |
 | Export as HTML       | ⇧⌘E  |
 | Focus mode           | ⌘D   |
 | Typewriter scrolling | ⌥⌘T  |

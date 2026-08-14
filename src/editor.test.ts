@@ -12,7 +12,7 @@ import {
   focusModeField,
 } from "./focusMode";
 import { typewriterField, setTypewriter } from "./typewriter";
-import { buildExportHtml, parseForExport } from "./export";
+import { buildExportHtml, parseForExport, renderBody, PRINT_CSS } from "./export";
 import { formatStats, nextStatsMode } from "./stats";
 
 function makeState(doc: string, cursor: number): EditorState {
@@ -318,6 +318,18 @@ describe("html export", () => {
     const plain = buildExportHtml("# Plain\n\nJust text.\n");
     expect(plain).not.toContain("katex.min.css");
     expect(plain).not.toContain("mermaid.min.js");
+  });
+
+  it("renderBody returns body-only html for the print pipeline", () => {
+    const { html, title, usesMermaid } = renderBody(
+      "---\ntitle: T\n---\n\n# H\n\n```mermaid\ngraph TD; A-->B;\n```\n",
+    );
+    expect(html).toContain("<h1>H</h1>");
+    expect(html).not.toContain("<!doctype");
+    expect(title).toBe("T");
+    expect(usesMermaid).toBe(true);
+    expect(PRINT_CSS).toContain("#print-root");
+    expect(PRINT_CSS).not.toMatch(/(^|[^-#.\w])body\s*\{/);
   });
 
   it("escapes raw HTML rather than passing it through", () => {
