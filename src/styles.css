@@ -104,6 +104,7 @@ body {
   background: var(--code-bg);
   border-radius: 4px;
   padding: 0.1em 0.2em;
+  color: var(--code);
 }
 
 #editor .cm-bullet {

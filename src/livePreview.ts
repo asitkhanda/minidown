@@ -111,7 +111,7 @@ class HRWidget extends WidgetType {
 }
 const hr = Decoration.replace({ widget: new HRWidget() });
 
-function buildDecorations(view: EditorView): DecorationSet {
+export function buildDecorations(view: EditorView): DecorationSet {
   const deco: Range<Decoration>[] = [];
   const { state } = view;
   const { doc } = state;
@@ -390,7 +390,7 @@ class TableWidget extends WidgetType {
   }
 }
 
-function buildTableDecorations(state: EditorState): DecorationSet {
+export function buildTableDecorations(state: EditorState): DecorationSet {
   const deco: Range<Decoration>[] = [];
   const touches = (from: number, to: number) =>
     state.selection.ranges.some((r) => r.from <= to && r.to >= from);

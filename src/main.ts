@@ -1,42 +1,7 @@
 import { EditorState } from "@codemirror/state";
-import {
-  EditorView,
-  keymap,
-  drawSelection,
-  dropCursor,
-  placeholder,
-} from "@codemirror/view";
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import {
-  markdown,
-  markdownLanguage,
-  markdownKeymap,
-} from "@codemirror/lang-markdown";
-import { languages } from "@codemirror/language-data";
-import { syntaxHighlighting } from "@codemirror/language";
-import { livePreview } from "./livePreview";
-import { mdHighlight, codeHighlight } from "./highlight";
+import { EditorView } from "@codemirror/view";
+import { editorExtensions } from "./editorSetup";
 import { docState, IN_TAURI } from "./docState";
-
-const editorTheme = EditorView.theme({
-  "&": { height: "100%", fontSize: "17px", backgroundColor: "transparent" },
-  "&.cm-focused": { outline: "none" },
-  ".cm-content": {
-    maxWidth: "42rem",
-    margin: "0 auto",
-    padding: "1.5rem 1.5rem 45vh",
-    lineHeight: "1.75",
-    caretColor: "var(--accent)",
-  },
-  ".cm-cursor": {
-    borderLeftWidth: "2px",
-    borderLeftColor: "var(--accent)",
-  },
-  ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
-    background: "var(--selection)",
-  },
-  ".cm-placeholder": { color: "var(--muted)" },
-});
 
 // ---------- Document / file state ----------
 
@@ -152,17 +117,7 @@ const view = new EditorView({
   state: EditorState.create({
     doc: "",
     extensions: [
-      history(),
-      drawSelection(),
-      dropCursor(),
-      EditorView.lineWrapping,
-      placeholder("Start writing…"),
-      markdown({ base: markdownLanguage, codeLanguages: languages }),
-      livePreview,
-      syntaxHighlighting(codeHighlight),
-      syntaxHighlighting(mdHighlight, { fallback: true }),
-      keymap.of([...markdownKeymap, ...defaultKeymap, ...historyKeymap]),
-      editorTheme,
+      editorExtensions,
       EditorView.updateListener.of((update) => {
         if (update.docChanged && !loadingDoc) {
           if (!dirty) {

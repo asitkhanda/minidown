@@ -11,11 +11,12 @@ export const mdHighlight = HighlightStyle.define([
   { tag: tags.strong, fontWeight: "700" },
   { tag: tags.emphasis, fontStyle: "italic" },
   { tag: tags.strikethrough, textDecoration: "line-through" },
+  // No color here: it would override token colors inside code fences.
+  // Inline-code coloring lives on the .cm-inlinecode chip instead.
   {
     tag: tags.monospace,
     fontFamily: "ui-monospace, 'SF Mono', Menlo, monospace",
     fontSize: "0.88em",
-    color: "var(--code)",
   },
   { tag: tags.link, color: "var(--accent)" },
   { tag: tags.url, color: "var(--accent)" },
