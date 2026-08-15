@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.2 — 2026-08-15
+
+- Status bar chips (Focus, Typewriter, Export, stats) were unreadable under Liquid Glass:
+  the glass material restyled their labels as dark-on-light. They now use the editor
+  palette so the text matches the menus that were already visible.
+
 ## 0.3.1 — 2026-08-15
 
 - App icon (Dock / Finder / About) from the beta brand mark

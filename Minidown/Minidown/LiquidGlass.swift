@@ -125,8 +125,21 @@ extension View {
     /// material: glass buttons are padded capsules and plain buttons are bare text, so the status
     /// bar's height and every control's width shifted when the window style changed — and the
     /// editor moved with it. Metrics are fixed here and only the background differs.
-    func statusChip(_ style: ChromeStyle, isHighlighted: Bool = false) -> some View {
-        buttonStyle(StatusChipStyle(chrome: style, isHighlighted: isHighlighted))
+    ///
+    /// `colorScheme` must be the *window's* scheme, captured outside `GlassEffectContainer`.
+    /// Glass restyles semantic colours as dark-on-light, which made Focus / Typewriter / Export
+    /// labels vanish on a dark bar while the neighbouring menus (which are not glass) stayed
+    /// readable.
+    func statusChip(
+        _ style: ChromeStyle,
+        isHighlighted: Bool = false,
+        colorScheme: ColorScheme
+    ) -> some View {
+        buttonStyle(StatusChipStyle(
+            chrome: style,
+            isHighlighted: isHighlighted,
+            windowColorScheme: colorScheme
+        ))
     }
 }
 
@@ -134,6 +147,8 @@ extension View {
 struct StatusChipStyle: ButtonStyle {
     let chrome: ChromeStyle
     var isHighlighted = false
+    /// Window appearance, not the glass material's nested scheme.
+    var windowColorScheme: ColorScheme = .dark
 
     /// Shared by every chrome style, so the bar is exactly the same size in each.
     private static let horizontalPadding: CGFloat = 10
@@ -158,17 +173,35 @@ struct StatusChipStyle: ButtonStyle {
         )
     }
 
+    /// Glass idle chips use the editor foreground (not SwiftUI `.secondary`).
+    /// Exposed so a test can lock the contrast choice without rendering.
+    var usesPrimaryLabel: Bool { chrome.usesGlass && !isHighlighted }
+
+    /// Glass labels use the editor palette so they cannot inherit the material's light scheme.
+    var usesEditorPaletteLabel: Bool { chrome.usesGlass }
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .foregroundStyle(labelStyle)
+            .environment(\.colorScheme, windowColorScheme)
             .padding(.horizontal, Self.horizontalPadding)
             .padding(.vertical, Self.verticalPadding)
             .frame(minHeight: Self.minHeight)
             .background { background }
             .contentShape(.rect(cornerRadius: Self.cornerRadius))
             .opacity(configuration.isPressed ? 0.6 : 1)
-            .foregroundStyle(
-                isHighlighted ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary)
-            )
+    }
+
+    private var labelStyle: AnyShapeStyle {
+        if isHighlighted {
+            return AnyShapeStyle(Color(nsColor: AppColors.accent))
+        }
+        if chrome.usesGlass {
+            // AppKit palette colours resolve against the window appearance, not the glass
+            // material's nested SwiftUI scheme — which is what made `.secondary` vanish.
+            return AnyShapeStyle(Color(nsColor: AppColors.foreground))
+        }
+        return AnyShapeStyle(.secondary)
     }
 
     @ViewBuilder

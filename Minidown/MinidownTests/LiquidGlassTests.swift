@@ -134,6 +134,21 @@ final class LiquidGlassTests: XCTestCase {
         )
     }
 
+    /// Focus / Typewriter / Export went invisible under Liquid Glass: `glassEffect` restyles
+    /// SwiftUI `.secondary` as dark-on-light, while the neighbouring menus (not glass) stayed
+    /// readable. Glass chips must take their ink from the editor palette instead.
+    func testGlassChipLabelsUseEditorPalette() {
+        XCTAssertTrue(StatusChipStyle(chrome: .liquidGlass).usesEditorPaletteLabel)
+        XCTAssertTrue(StatusChipStyle(chrome: .liquidGlass, isHighlighted: true).usesEditorPaletteLabel)
+        XCTAssertFalse(StatusChipStyle(chrome: .solid).usesEditorPaletteLabel)
+    }
+
+    func testGlassChipIdleLabelUsesPrimaryWeight() {
+        XCTAssertTrue(StatusChipStyle(chrome: .liquidGlass).usesPrimaryLabel)
+        XCTAssertFalse(StatusChipStyle(chrome: .liquidGlass, isHighlighted: true).usesPrimaryLabel)
+        XCTAssertFalse(StatusChipStyle(chrome: .solid).usesPrimaryLabel)
+    }
+
     // MARK: - Helpers
 
     private func resolve(_ color: NSColor, in name: NSAppearance.Name) -> NSColor {

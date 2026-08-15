@@ -7,12 +7,12 @@ options:
   developmentLanguage: en
 settings:
   base:
-    MARKETING_VERSION: "0.3.1"
+    MARKETING_VERSION: "0.3.2"
     # Kept in step with MARKETING_VERSION as major*10000 + minor*100 + patch, which is what the
     # release workflow derives from the tag. A hardcoded "1" is the usual default and a trap: it
     # feeds CFBundleVersion, and an update whose CFBundleVersion does not increase is one Sparkle
     # will silently never offer — no error, no log, it simply never appears.
-    CURRENT_PROJECT_VERSION: "301"
+    CURRENT_PROJECT_VERSION: "302"
     SWIFT_VERSION: "5.0"
     MACOSX_DEPLOYMENT_TARGET: "14.0"
 packages:

@@ -15,6 +15,7 @@ struct StatusBarView: View {
     let chrome: ChromeStyle
 
     @EnvironmentObject private var settings: EditorSettings
+    @Environment(\.colorScheme) private var colorScheme
     @AppStorage("theme") private var themeRaw = ThemePreference.system.rawValue
     @AppStorage("chrome") private var chromeRaw = ChromeStyle.defaultValue.rawValue
     @AppStorage("fontFamily") private var fontFamilyRaw = EditorFontFamily.sansSerif.rawValue
@@ -78,7 +79,7 @@ struct StatusBarView: View {
             }
 
             Button("Export") { exportPresented.toggle() }
-                .statusChip(chrome)
+                .statusChip(chrome, colorScheme: colorScheme)
                 .popover(isPresented: $exportPresented, arrowEdge: .top) {
                     VStack(alignment: .leading, spacing: 4) {
                         exportRow("PDF (Print)…", .pdf)
@@ -94,7 +95,7 @@ struct StatusBarView: View {
             Button(settings.statsMode.format(document.text)) {
                 settings.cycleStatsMode()
             }
-            .statusChip(chrome)
+            .statusChip(chrome, colorScheme: colorScheme)
             .help("Words · characters · reading time")
         }
         .font(.system(size: 11))
@@ -124,7 +125,7 @@ struct StatusBarView: View {
 
     private func toggleButton(_ title: String, isOn: Bool, action: @escaping () -> Void) -> some View {
         Button(title, action: action)
-            .statusChip(chrome, isHighlighted: isOn)
+            .statusChip(chrome, isHighlighted: isOn, colorScheme: colorScheme)
     }
 
     /// Menus keep the same padding as the chips so the row's height and rhythm do not depend on
