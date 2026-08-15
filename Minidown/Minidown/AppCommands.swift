@@ -27,7 +27,7 @@ struct AppCommands: Commands {
 
     var body: some Commands {
         CommandGroup(replacing: .appInfo) {
-            Button("About minidown") { showAbout() }
+            Button("About minidown beta") { showAbout() }
         }
 
         CommandGroup(after: .saveItem) {
@@ -108,10 +108,11 @@ struct AppCommands: Commands {
 
     private func showAbout() {
         NSApplication.shared.orderFrontStandardAboutPanel(options: [
-            .applicationName: "minidown",
+            .applicationName: "minidown beta",
             NSApplication.AboutPanelOptionKey(rawValue: "Copyright"): "Copyright © 2026 Asit Khanda",
             .credits: NSAttributedString(
-                string: "A minimal, distraction-free Markdown writer.\n"
+                string: "A minimal, distraction-free Markdown writer for macOS.\n"
+                    + "This is a beta release — expect rough edges.\n\n"
                     + "Licensed under AGPL-3.0-or-later.\n\n"
                     + "Bundles KaTeX, Mermaid, tree-sitter and its grammars, Splash "
                     + "and Phosphor Icons (MIT); SwiftTreeSitter (BSD-3-Clause); "

@@ -85,7 +85,8 @@ Open `examples/06-extended.md`:
 - [ ] Appearance submenu is System / Light / Dark only — Liquid Glass lives under
       View → Window, and the two combine freely
 - [ ] There is exactly **one** View menu
-- [ ] minidown → About shows the version, AGPL-3.0-or-later, and the bundled
+- [ ] minidown → About shows **minidown beta**, the version, AGPL-3.0-or-later, and the bundled
+  dependency credits, plus a beta notice
       third-party credits
 - [ ] Focus Mode and Typewriter show real checkmarks, not "✓" in the title
 

@@ -7,8 +7,8 @@ cask "minidown" do
   sha256 "{{SHA256}}"
 
   url "https://github.com/asitkhanda/minidown/releases/download/v#{version}/minidown-#{version}.zip"
-  name "minidown"
-  desc "Minimal, distraction-free Markdown writer"
+  name "minidown beta"
+  desc "Minimal, distraction-free Markdown writer (beta)"
   homepage "https://github.com/asitkhanda/minidown"
 
   # Tells `brew outdated` / `brew upgrade` where to look for new versions.

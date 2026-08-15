@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1 — 2026-08-15
+
+- App icon (Dock / Finder / About) from the beta brand mark
+- Product explicitly labeled **minidown beta** in the About panel, display name,
+  README, Homebrew cask, and release notes
+
 ## 0.3.0 — 2026-08-15
 
 Correctness, performance and parity pass over the native rewrite. The 0.2.0

@@ -2,6 +2,9 @@
 
 **A minimal, distraction-free Markdown writer for macOS.**
 
+> **Beta.** The app works, but the product is still early. Expect rough edges,
+> and please file issues when you hit them.
+
 minidown gives you a Typora-style live preview — syntax renders in place and
 hides when your cursor leaves it — while your file stays plain Markdown,
 byte for byte. No lock-in, no reformatting your source, no feature bloat.
@@ -110,8 +113,7 @@ brew install --cask minidown
 
 Update with `brew upgrade --cask minidown`.
 
-Release builds are signed with a Developer ID certificate and notarized by Apple. See
-[docs/RELEASING.md](docs/RELEASING.md) for how tags become GitHub Releases and cask bumps.
+This ships **minidown beta** — signed and notarized, but still a beta product.
 
 **Build from source:** requires **Xcode 26+** and
 [XcodeGen](https://github.com/yonaskolb/XcodeGen). Xcode 26 is not optional:
