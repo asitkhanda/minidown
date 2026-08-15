@@ -21,6 +21,10 @@ jobs:
     # there anyway, so it can only fail confusingly.
     if: github.repository == 'asitkhanda/minidown'
     runs-on: macos-26
+    env:
+      # Matches the Developer ID Application certificate in the signing keychain.
+      DEVELOPER_ID_IDENTITY: "Developer ID Application: Asit Khanda (D253L2SX65)"
+      DEVELOPMENT_TEAM: D253L2SX65
     steps:
       - uses: actions/checkout@v4
         with:
@@ -74,12 +78,54 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             test
 
+      # Temporary keychain so the Developer ID identity is available to codesign / xcodebuild
+      # without touching the login keychain. Cleaned up in a later step.
+      - name: Import Developer ID certificate
+        env:
+          DEVELOPER_ID_CERT_P12: ${{ secrets.DEVELOPER_ID_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DEVELOPER_ID_CERT_P12:-}" ] || [ -z "${CERT_PASSWORD:-}" ]; then
+            echo "::error::DEVELOPER_ID_CERT_P12 / CERT_PASSWORD secrets are required. See docs/RELEASING.md."
+            exit 1
+          fi
+
+          KEYCHAIN_PATH="$RUNNER_TEMP/minidown-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+          echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> "$GITHUB_ENV"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          CERT_PATH="$RUNNER_TEMP/developer-id.p12"
+          echo "$DEVELOPER_ID_CERT_P12" | base64 --decode > "$CERT_PATH"
+          security import "$CERT_PATH" \
+            -P "$CERT_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+          rm -f "$CERT_PATH"
+
+          # Allow codesign to use the private key without a UI prompt.
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed -e s/\"//g)
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
       - name: Build release
         working-directory: Minidown
         run: |
-          # Ad-hoc signed. Without a Developer ID certificate this cannot be notarized, so macOS
-          # will still gate the first launch — see docs/RELEASING.md. Ad-hoc at least produces a
-          # structurally valid, launchable bundle rather than an unsigned one.
+          set -euo pipefail
+          # Manual Developer ID signing with hardened runtime. Do not pass --deep to codesign
+          # later — nesteds get the wrong flags; let xcodebuild sign frameworks inside-out.
           xcodebuild \
             -scheme Minidown \
             -configuration Release \
@@ -87,20 +133,64 @@ jobs:
             -derivedDataPath ../DerivedData \
             MARKETING_VERSION="${{ steps.version.outputs.version }}" \
             CURRENT_PROJECT_VERSION="${{ steps.version.outputs.build }}" \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGNING_REQUIRED=NO \
+            DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="$DEVELOPER_ID_IDENTITY" \
+            OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH" \
+            CODE_SIGNING_REQUIRED=YES \
             CODE_SIGNING_ALLOWED=YES \
             build
+
+      - name: Notarize and staple
+        env:
+          AC_API_KEY_P8: ${{ secrets.AC_API_KEY_P8 }}
+          AC_API_KEY_ID: ${{ secrets.AC_API_KEY_ID }}
+          AC_API_ISSUER_ID: ${{ secrets.AC_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          APP="DerivedData/Build/Products/Release/Minidown.app"
+          test -d "$APP" || { echo "no app at $APP"; exit 1; }
+
+          if [ -z "${AC_API_KEY_P8:-}" ] || [ -z "${AC_API_KEY_ID:-}" ]; then
+            echo "::error::AC_API_KEY_P8 / AC_API_KEY_ID secrets are required. See docs/RELEASING.md."
+            exit 1
+          fi
+
+          # Verify the outer signature before talking to Apple.
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          spctl --assess --type execute --verbose=4 "$APP" || true
+
+          KEY_PATH="$RUNNER_TEMP/AuthKey_${AC_API_KEY_ID}.p8"
+          printf '%s\n' "$AC_API_KEY_P8" > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+
+          NOTARY_ARGS=(--key "$KEY_PATH" --key-id "$AC_API_KEY_ID")
+          # Team keys need the issuer UUID; Individual keys must omit it.
+          if [ -n "${AC_API_ISSUER_ID:-}" ]; then
+            NOTARY_ARGS+=(--issuer "$AC_API_ISSUER_ID")
+          fi
+
+          # Submit a zip of the .app — notarytool accepts zip/dmg/pkg. Staple the .app afterwards
+          # so the ticket is written into the bundle before the distribution zip is built.
+          SUBMIT_ZIP="$RUNNER_TEMP/minidown-notarize.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "$SUBMIT_ZIP"
+          xcrun notarytool submit "$SUBMIT_ZIP" "${NOTARY_ARGS[@]}" --wait --timeout 30m
+          rm -f "$SUBMIT_ZIP" "$KEY_PATH"
+
+          xcrun stapler staple "$APP"
+          xcrun stapler validate "$APP"
+          spctl --assess --type execute --verbose=4 "$APP"
 
       - name: Package
         id: package
         run: |
+          set -euo pipefail
           APP="DerivedData/Build/Products/Release/Minidown.app"
           test -d "$APP" || { echo "no app at $APP"; exit 1; }
           NAME="minidown-${{ steps.version.outputs.version }}.zip"
           # ditto with --sequesterRsrc, not `zip -r`: it preserves the symlinks and resource forks
-          # that bundle code signatures depend on. `zip -r` follows symlinks and can invalidate a
-          # framework's signature — which matters now and will matter more once Sparkle is added.
+          # that bundle code signatures (and the notarization ticket) depend on. `zip -r` follows
+          # symlinks and can invalidate a framework's signature.
           ditto -c -k --sequesterRsrc --keepParent "$APP" "$NAME"
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
           echo "sha256=$(shasum -a 256 "$NAME" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
@@ -121,26 +211,37 @@ jobs:
 
             Already installed? `brew upgrade --cask minidown`
 
-            > This build is **not notarized yet**, so macOS will ask you to confirm the first
-            > launch: System Settings → Privacy & Security → **Open Anyway**.
+            Signed with Developer ID and notarized by Apple.
 
             SHA-256: `${{ steps.package.outputs.sha256 }}`
 
-      # Bumps the cask in the tap so `brew upgrade` finds the new version. Needs a PAT with
-      # `contents: write` on the tap repo, stored as HOMEBREW_TAP_TOKEN.
-      # The `secrets` context is not available in a step `if:`, so the token is mapped to an env
-      # var and checked in the script instead. Missing token skips the bump; the release still ships.
+      # Bumps the cask in the tap so `brew upgrade` finds the new version. Prefer a write-only
+      # deploy key on homebrew-minidown (HOMEBREW_TAP_SSH_KEY). A fine-grained PAT
+      # (HOMEBREW_TAP_TOKEN) still works as a fallback. Missing both skips the bump; the release
+      # still ships. The `secrets` context is not available in a step `if:`, so checks run in-script.
       - name: Update Homebrew tap
         env:
+          HOMEBREW_TAP_SSH_KEY: ${{ secrets.HOMEBREW_TAP_SSH_KEY }}
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
           SHA256: ${{ steps.package.outputs.sha256 }}
         run: |
-          if [ -z "$GH_TOKEN" ]; then
-            echo "HOMEBREW_TAP_TOKEN not set — skipping cask bump. See docs/RELEASING.md."
+          set -euo pipefail
+          if [ -z "${HOMEBREW_TAP_SSH_KEY:-}" ] && [ -z "${GH_TOKEN:-}" ]; then
+            echo "HOMEBREW_TAP_SSH_KEY / HOMEBREW_TAP_TOKEN not set — skipping cask bump. See docs/RELEASING.md."
             exit 0
           fi
-          git clone "https://x-access-token:${GH_TOKEN}@github.com/asitkhanda/homebrew-minidown.git" tap
+
+          if [ -n "${HOMEBREW_TAP_SSH_KEY:-}" ]; then
+            KEY_FILE="$RUNNER_TEMP/homebrew-tap-deploy.key"
+            printf '%s\n' "$HOMEBREW_TAP_SSH_KEY" > "$KEY_FILE"
+            chmod 600 "$KEY_FILE"
+            export GIT_SSH_COMMAND="ssh -i $KEY_FILE -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+            git clone git@github.com:asitkhanda/homebrew-minidown.git tap
+          else
+            git clone "https://x-access-token:${GH_TOKEN}@github.com/asitkhanda/homebrew-minidown.git" tap
+          fi
+
           cd tap
           mkdir -p Casks
           sed -e "s/{{VERSION}}/${VERSION}/g" -e "s/{{SHA256}}/${SHA256}/g" \
@@ -148,5 +249,17 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Casks/minidown.rb
+          if git diff --cached --quiet; then
+            echo "No cask changes to commit."
+            exit 0
+          fi
           git commit -m "minidown ${VERSION}"
           git push
+          rm -f "${KEY_FILE:-}"
+
+      - name: Clean up signing keychain
+        if: always()
+        run: |
+          if [ -n "${KEYCHAIN_PATH:-}" ] && [ -f "$KEYCHAIN_PATH" ]; then
+            security delete-keychain "$KEYCHAIN_PATH" || true
+          fi

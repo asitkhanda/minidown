@@ -110,9 +110,8 @@ brew install --cask minidown
 
 Update with `brew upgrade --cask minidown`.
 
-> **First launch.** Builds are not notarized yet, so macOS will ask you to confirm the app once:
-> **System Settings → Privacy & Security → Open Anyway**. See
-> [docs/RELEASING.md](docs/RELEASING.md) for why, and what it takes to remove that step.
+Release builds are signed with a Developer ID certificate and notarized by Apple. See
+[docs/RELEASING.md](docs/RELEASING.md) for how tags become GitHub Releases and cask bumps.
 
 **Build from source:** requires **Xcode 26+** and
 [XcodeGen](https://github.com/yonaskolb/XcodeGen). Xcode 26 is not optional:
@@ -181,9 +180,8 @@ scrolling feel) is covered by the manual checklist in
   when the document actually uses them.
 - Table cell contents in the widget are plain text (no nested bold/code), matching
   the previous app's grid limitation
-- Not code-signed with a Developer ID or notarized, so the first launch needs
-  **Open Anyway** — see [docs/RELEASING.md](docs/RELEASING.md). In-app
-  auto-updates wait on the same gap; updates come through Homebrew for now
+- No in-app auto-update yet (Sparkle); updates come through Homebrew —
+  see [docs/RELEASING.md](docs/RELEASING.md)
 
 ## License
 

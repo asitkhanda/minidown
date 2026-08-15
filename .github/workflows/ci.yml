@@ -101,9 +101,8 @@ jobs:
         working-directory: Minidown
         run: xcodegen generate
 
-      # Unsigned: there is no DEVELOPMENT_TEAM in the project, so an ordinary `archive` fails with
-      # "Signing for 'Minidown' requires a development team". The artifact is for inspection, not
-      # distribution — Gatekeeper will refuse to run it until signing and notarization exist.
+      # Unsigned on purpose: CI archives are for inspection only. Distribution signing and
+      # notarization live in release.yml (tag-driven), which imports the Developer ID identity.
       - name: Archive (unsigned)
         working-directory: Minidown
         run: |

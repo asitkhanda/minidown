@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0 — unreleased
+## 0.3.0 — 2026-08-15
 
 Correctness, performance and parity pass over the native rewrite. The 0.2.0
 port had drifted a long way from what the README describes; this closes the gap.
@@ -117,6 +117,8 @@ port had drifted a long way from what the README describes; this closes the gap.
 - Releases are tag-driven: pushing a `v*` tag builds, tests, publishes a GitHub
   Release and bumps a Homebrew cask, so updates arrive via `brew upgrade` rather
   than a manual download-and-reinstall. Pushing to `main` ships nothing
+- Release builds are signed with Developer ID, notarized, and stapled before the
+  zip is published — Gatekeeper no longer needs Open Anyway on first launch
 - CI and release builds moved to macOS 26 runners. Liquid Glass needs the
   macOS 26 SDK to compile, so the older runner image could not have built this
   release at all

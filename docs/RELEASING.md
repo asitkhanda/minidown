@@ -10,8 +10,9 @@ git push origin v0.3.1
 ```
 
 `.github/workflows/release.yml` then runs the tests, builds a Release configuration with the
-version taken from the tag, packages `Minidown.app` as a zip, publishes a GitHub Release, and
-bumps the Homebrew cask.
+version taken from the tag, signs with your **Developer ID Application** certificate, notarizes
+and staples the app, packages `Minidown.app` as a zip, publishes a GitHub Release, and bumps the
+Homebrew cask.
 
 ## How users install and update
 
@@ -30,68 +31,113 @@ without anyone editing the cask by hand.
 ### The tap repository
 
 Homebrew casks live in a repo named `homebrew-<tap>`. Create
-**`github.com/asitkhanda/homebrew-minidown`** — an empty public repo is enough; the release
-workflow creates `Casks/minidown.rb` on the first run from
+**`github.com/asitkhanda/homebrew-minidown`** if it does not exist — an empty public repo is
+enough; the release workflow creates `Casks/minidown.rb` on the first run from
 [`distribution/minidown.rb.template`](../distribution/minidown.rb.template).
 
 A personal tap is deliberate rather than submitting to `homebrew/cask`: the official repo has
-notability requirements a new project will not meet, and it expects notarized apps.
+notability requirements a new project will not meet.
 
-### The token
+### Homebrew tap write access
 
-The workflow needs to push to that repo. Create a fine-grained personal access token with
-**Contents: Read and write** scoped to `homebrew-minidown`, and add it to *this* repo as the
-secret **`HOMEBREW_TAP_TOKEN`**.
+The workflow needs to push to `homebrew-minidown`. Prefer a **write-only deploy key**:
 
-Without it the release still publishes — the tap bump step is skipped.
+```bash
+ssh-keygen -t ed25519 -f homebrew-minidown-deploy -N '' -C 'minidown-release-tap'
+gh repo deploy-key add homebrew-minidown-deploy.pub \
+  --repo asitkhanda/homebrew-minidown \
+  --title 'minidown release' \
+  --allow-write
+gh secret set HOMEBREW_TAP_SSH_KEY --repo asitkhanda/minidown < homebrew-minidown-deploy
+rm -f homebrew-minidown-deploy homebrew-minidown-deploy.pub
+```
 
-## What is not done yet: signing and notarization
+A fine-grained personal access token with **Contents: Read and write** scoped to
+`homebrew-minidown`, stored as **`HOMEBREW_TAP_TOKEN`**, still works as a fallback.
 
-This is the honest limitation, and it is worth understanding before telling anyone to install.
+Without either secret the release still publishes — the tap bump step is skipped.
 
-The build is **ad-hoc signed and not notarized**, because notarization requires a Developer ID
-certificate from the Apple Developer Program ($99/year). The practical consequence: macOS
-quarantines anything downloaded from the internet, and Gatekeeper refuses to launch a quarantined
-app it cannot verify. The first launch takes an extra step — **System Settings → Privacy &
-Security → Open Anyway** — and on recent macOS the older right-click-to-open shortcut no longer
-works.
+### Signing and notarization secrets
 
-Homebrew does not paper over this. It solves *distribution and upgrades*, not *trust*.
+Releases require these repository secrets on `asitkhanda/minidown`:
 
-Two things follow:
+| Secret | What it is |
+| --- | --- |
+| `DEVELOPER_ID_CERT_P12` | Base64 of the Developer ID Application `.p12` export |
+| `CERT_PASSWORD` | Password used when exporting that `.p12` |
+| `AC_API_KEY_P8` | Contents of the App Store Connect API `.p8` private key |
+| `AC_API_KEY_ID` | Key ID (the `XXXXXXXXXX` in `AuthKey_XXXXXXXXXX.p8`) |
+| `AC_API_ISSUER_ID` | Issuer UUID — **required for Team keys**, omit for Individual keys |
+| `HOMEBREW_TAP_SSH_KEY` | Private half of a write-only deploy key on `homebrew-minidown` (preferred) |
+| `HOMEBREW_TAP_TOKEN` | Fine-grained PAT with Contents write on `homebrew-minidown` (fallback) |
 
-- Every update still needs that confirmation, which is a poor experience to ask of people
-  repeatedly.
-- **In-app auto-updates are blocked by the same gap.** Sparkle requires the update to carry the
-  same Developer ID signature as the running app, so it cannot be added meaningfully until
-  signing exists.
+Team ID for this project is **`D253L2SX65`**. The identity string is
+`Developer ID Application: Asit Khanda (D253L2SX65)`.
 
-### When you are ready to fix it
+#### Export the certificate for CI
 
-1. Enrol in the Apple Developer Program and create a **Developer ID Application** certificate.
-2. Add repository secrets: the certificate as base64 (`DEVELOPER_ID_CERT_P12`, `CERT_PASSWORD`)
-   and an App Store Connect API key for notarization (`AC_API_KEY_ID`, `AC_API_ISSUER_ID`,
-   `AC_API_KEY_P8`). `notarytool` uses these; `altool` is gone.
-3. In `release.yml`, replace the ad-hoc `CODE_SIGN_IDENTITY="-"` with the real identity, then add
-   `xcrun notarytool submit --wait` and `xcrun stapler staple` before packaging.
+On the Mac that has the Developer ID identity in Keychain Access:
 
-   Two things that bite here. **Do not sign with `--deep`** — it is deprecated and signs nested
-   code with the wrong flags and entitlements; sign inside-out, frameworks and XPC services first,
-   the app bundle last. And **staple the `.app` before zipping it**: the ticket is written into the
-   bundle, so a zip built afterwards carries it, while a zip stapled directly does not exist as an
-   operation. Switching the artifact to a DMG is worth doing at this point — a DMG is stapleable as
-   a unit and avoids app translocation for people who bypass Homebrew and drag it out of the image.
-4. Only then add Sparkle for in-app updates, which is a separate piece of work. It needs an EdDSA
-   key pair (`generate_keys`; the private half lives in the login Keychain and is exported for CI
-   with `generate_keys -x` — generate it yourself, never let a tool print one into a transcript),
-   `SUFeedURL` and `SUPublicEDKey` in `Info.plist`, an appcast regenerated and published on each
-   release, and each artifact signed with `sign_update --ed-key-file` so the signature reaches the
-   appcast entry.
+```bash
+# Replace PATH and the export password you choose.
+security export \
+  -k ~/Library/Keychains/login.keychain-db \
+  -t identities \
+  -f pkcs12 \
+  -o developer-id.p12 \
+  -P 'your-export-password'
 
-   Because this app is sandboxed, Sparkle also needs its XPC services copied into the bundle and
-   the matching entitlements — the sandbox is why they exist, and an unsandboxed app skips them.
-   The Homebrew cask should gain `auto_updates true` in the same change, so `brew upgrade` stops
-   fighting an app that now updates itself.
+base64 -i developer-id.p12 | pbcopy   # → DEVELOPER_ID_CERT_P12
+```
+
+Or, if you already have a `.p12` (for example from an earlier export):
+
+```bash
+base64 -i /path/to/your.p12 | pbcopy
+```
+
+Then:
+
+```bash
+gh secret set DEVELOPER_ID_CERT_P12 --repo asitkhanda/minidown   # paste base64, Ctrl-D
+gh secret set CERT_PASSWORD --repo asitkhanda/minidown
+gh secret set AC_API_KEY_P8 --repo asitkhanda/minidown < AuthKey_XXXXXXXXXX.p8
+gh secret set AC_API_KEY_ID --repo asitkhanda/minidown --body 'XXXXXXXXXX'
+# Only if this is a Team API key:
+gh secret set AC_API_ISSUER_ID --repo asitkhanda/minidown --body 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
+# Tap write access — prefer the deploy-key steps above; or:
+gh secret set HOMEBREW_TAP_TOKEN --repo asitkhanda/minidown
+```
+
+Create the App Store Connect API key under
+[Users and Access → Integrations → App Store Connect API](https://appstoreconnect.apple.com/access/integrations/api)
+with at least **Developer** access. `notarytool` uses these; `altool` is gone.
+
+### What the workflow does with them
+
+1. Imports the `.p12` into a temporary keychain on the runner.
+2. Builds Release with `CODE_SIGN_STYLE=Manual` and the Developer ID identity (hardened runtime
+   is already on in `project.yml`).
+3. Submits a zip of `Minidown.app` to `notarytool --wait`, then **staples the `.app`** before
+   packaging the distribution zip — the ticket lives in the bundle, so a zip built afterwards
+   carries it. Do not try to staple the zip.
+4. Does **not** use `codesign --deep` — nested code would get the wrong flags and entitlements;
+   `xcodebuild` signs frameworks inside-out.
+
+## Sparkle (not yet)
+
+In-app auto-updates are a separate piece of work. Sparkle needs an EdDSA key pair
+(`generate_keys`; the private half lives in the login Keychain and is exported for CI with
+`generate_keys -x` — generate it yourself, never let a tool print one into a transcript),
+`SUFeedURL` and `SUPublicEDKey` in `Info.plist`, an appcast regenerated and published on each
+release, and each artifact signed with `sign_update --ed-key-file`.
+
+Because this app is sandboxed, Sparkle also needs its XPC services copied into the bundle and
+the matching entitlements. The Homebrew cask should gain `auto_updates true` in the same change,
+so `brew upgrade` stops fighting an app that now updates itself.
+
+A DMG is worth considering later too — it is stapleable as a unit and avoids app translocation
+for people who bypass Homebrew and drag the app out of the image.
 
 ## Versioning
 
