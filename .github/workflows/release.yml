@@ -1,0 +1,152 @@
+name: Release
+
+# Tag-driven, deliberately. Pushing to main must not ship to users: an update that reaches people
+# should be something you chose to release, and the tag is also where the version number comes from.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build (e.g. v0.3.1)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # A tag pushed to a fork would otherwise run this and try to publish. Secrets are unavailable
+    # there anyway, so it can only fail confusingly.
+    if: github.repository == 'asitkhanda/minidown'
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      # Liquid Glass (NSGlassEffectView, .glassEffect) needs the macOS 26 SDK to *compile*. The
+      # `#available(macOS 26.0, *)` guards in LiquidGlass.swift are runtime checks — they do not
+      # make the symbols resolve against an older SDK. Pick the newest Xcode and fail here with a
+      # readable message rather than 10 minutes later with "cannot find 'NSGlassEffectView'".
+      - name: Select Xcode
+        run: |
+          XCODE=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          sudo xcode-select -s "$XCODE/Contents/Developer"
+          xcodebuild -version
+          SDK=$(xcrun --sdk macosx --show-sdk-version)
+          echo "macOS SDK: $SDK"
+          if [ "${SDK%%.*}" -lt 26 ]; then
+            echo "::error::macOS SDK $SDK is too old — Liquid Glass needs the macOS 26 SDK (Xcode 26+)."
+            exit 1
+          fi
+
+      - name: Derive version
+        id: version
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          # Derived from the tag, not the run number: reproducible locally, decodable by eye, and
+          # it survives recreating the repo. Homebrew compares the marketing version, but Sparkle
+          # compares CFBundleVersion — and a CFBundleVersion that does not increase means Sparkle
+          # silently never offers an update, with no error anyone sees. Getting this right now
+          # avoids that trap later.
+          IFS=. read -r MAJOR MINOR PATCH <<< "${VERSION%%-*}"
+          echo "build=$(( ${MAJOR:-0} * 10000 + ${MINOR:-0} * 100 + ${PATCH:-0} ))" >> "$GITHUB_OUTPUT"
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate project
+        working-directory: Minidown
+        run: xcodegen generate
+
+      - name: Test
+        working-directory: Minidown
+        run: |
+          xcodebuild \
+            -scheme Minidown \
+            -destination 'platform=macOS' \
+            -derivedDataPath ../DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            test
+
+      - name: Build release
+        working-directory: Minidown
+        run: |
+          # Ad-hoc signed. Without a Developer ID certificate this cannot be notarized, so macOS
+          # will still gate the first launch — see docs/RELEASING.md. Ad-hoc at least produces a
+          # structurally valid, launchable bundle rather than an unsigned one.
+          xcodebuild \
+            -scheme Minidown \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            -derivedDataPath ../DerivedData \
+            MARKETING_VERSION="${{ steps.version.outputs.version }}" \
+            CURRENT_PROJECT_VERSION="${{ steps.version.outputs.build }}" \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=YES \
+            build
+
+      - name: Package
+        id: package
+        run: |
+          APP="DerivedData/Build/Products/Release/Minidown.app"
+          test -d "$APP" || { echo "no app at $APP"; exit 1; }
+          NAME="minidown-${{ steps.version.outputs.version }}.zip"
+          # ditto with --sequesterRsrc, not `zip -r`: it preserves the symlinks and resource forks
+          # that bundle code signatures depend on. `zip -r` follows symlinks and can invalidate a
+          # framework's signature — which matters now and will matter more once Sparkle is added.
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "$NAME"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(shasum -a 256 "$NAME" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: minidown ${{ steps.version.outputs.version }}
+          generate_release_notes: true
+          files: ${{ steps.package.outputs.name }}
+          body: |
+            ## Install
+
+            ```bash
+            brew install --cask asitkhanda/minidown/minidown
+            ```
+
+            Already installed? `brew upgrade --cask minidown`
+
+            > This build is **not notarized yet**, so macOS will ask you to confirm the first
+            > launch: System Settings → Privacy & Security → **Open Anyway**.
+
+            SHA-256: `${{ steps.package.outputs.sha256 }}`
+
+      # Bumps the cask in the tap so `brew upgrade` finds the new version. Needs a PAT with
+      # `contents: write` on the tap repo, stored as HOMEBREW_TAP_TOKEN.
+      # The `secrets` context is not available in a step `if:`, so the token is mapped to an env
+      # var and checked in the script instead. Missing token skips the bump; the release still ships.
+      - name: Update Homebrew tap
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          SHA256: ${{ steps.package.outputs.sha256 }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "HOMEBREW_TAP_TOKEN not set — skipping cask bump. See docs/RELEASING.md."
+            exit 0
+          fi
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/asitkhanda/homebrew-minidown.git" tap
+          cd tap
+          mkdir -p Casks
+          sed -e "s/{{VERSION}}/${VERSION}/g" -e "s/{{SHA256}}/${SHA256}/g" \
+            ../distribution/minidown.rb.template > Casks/minidown.rb
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/minidown.rb
+          git commit -m "minidown ${VERSION}"
+          git push
