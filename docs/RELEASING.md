@@ -117,10 +117,13 @@ with at least **Developer** access. `notarytool` uses these; `altool` is gone.
 
 1. Imports the `.p12` into a temporary keychain on the runner.
 2. Builds Release with `CODE_SIGN_STYLE=Manual` and the Developer ID identity (hardened runtime
-   is already on in `project.yml`).
-3. Submits a zip of `Minidown.app` to `notarytool --wait`, then **staples the `.app`** before
-   packaging the distribution zip — the ticket lives in the bundle, so a zip built afterwards
-   carries it. Do not try to staple the zip.
+   is already on in `project.yml`). The signature must include `--timestamp` and must **not**
+   carry `get-task-allow` (so Release sets `ENABLE_TESTABILITY=NO` and
+   `CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO` — Debug keeps those for the debugger).
+3. Submits a zip of `Minidown.app` to `notarytool --wait`, fails the job if status is not
+   `Accepted` (and prints Apple's rejection log), then **staples the `.app`** before packaging
+   the distribution zip — the ticket lives in the bundle, so a zip built afterwards carries it.
+   Do not try to staple the zip.
 4. Does **not** use `codesign --deep` — nested code would get the wrong flags and entitlements;
    `xcodebuild` signs frameworks inside-out.
 

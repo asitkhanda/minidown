@@ -148,7 +148,14 @@ targets:
         CODE_SIGN_STYLE: Automatic
         COMBINE_HIDPI_IMAGES: YES
         LD_RUNPATH_SEARCH_PATHS: "@executable_path/../Frameworks"
-        ENABLE_TESTABILITY: YES
+      configs:
+        # Debug builds inject get-task-allow so the debugger can attach. Release must not —
+        # notarization rejects that entitlement, and ENABLE_TESTABILITY is what pulls it in.
+        Debug:
+          ENABLE_TESTABILITY: YES
+        Release:
+          ENABLE_TESTABILITY: NO
+          CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
     # XcodeGen owns this file, so the keys must live here — writing them into the .entitlements
     # directly gets overwritten on the next `xcodegen generate`.
     #

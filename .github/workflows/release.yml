@@ -93,8 +93,10 @@ jobs:
 
           KEYCHAIN_PATH="$RUNNER_TEMP/minidown-signing.keychain-db"
           KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+          # Keep the password in a file, not GITHUB_ENV — env dumps show up in step logs.
+          printf '%s' "$KEYCHAIN_PASSWORD" > "$RUNNER_TEMP/keychain-password"
+          chmod 600 "$RUNNER_TEMP/keychain-password"
           echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
-          echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> "$GITHUB_ENV"
 
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
@@ -119,13 +121,22 @@ jobs:
 
           security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed -e s/\"//g)
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+          unset KEYCHAIN_PASSWORD
 
       - name: Build release
         working-directory: Minidown
         run: |
           set -euo pipefail
+          KEYCHAIN_PASSWORD="$(cat "$RUNNER_TEMP/keychain-password")"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          unset KEYCHAIN_PASSWORD
           # Manual Developer ID signing with hardened runtime. Do not pass --deep to codesign
           # later — nesteds get the wrong flags; let xcodebuild sign frameworks inside-out.
+          #
+          # --timestamp: notarization requires a secure timestamp from Apple's TSA.
+          # --options runtime: hardened runtime must be in the signature itself.
+          # CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO / ENABLE_TESTABILITY=NO: Debug injects
+          # get-task-allow; notarization rejects that entitlement on both slices.
           xcodebuild \
             -scheme Minidown \
             -configuration Release \
@@ -136,10 +147,19 @@ jobs:
             DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="$DEVELOPER_ID_IDENTITY" \
-            OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH" \
+            OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH --timestamp --options runtime" \
+            CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
+            ENABLE_TESTABILITY=NO \
             CODE_SIGNING_REQUIRED=YES \
             CODE_SIGNING_ALLOWED=YES \
             build
+
+          APP="../DerivedData/Build/Products/Release/Minidown.app"
+          codesign --display --verbose=4 --entitlements :- "$APP" 2>&1 | tee /tmp/minidown-codesign.txt
+          if codesign --display --entitlements :- "$APP" 2>/dev/null | grep -q get-task-allow; then
+            echo "::error::Release binary still has get-task-allow — notarization will reject it."
+            exit 1
+          fi
 
       - name: Notarize and staple
         env:
@@ -174,8 +194,19 @@ jobs:
           # so the ticket is written into the bundle before the distribution zip is built.
           SUBMIT_ZIP="$RUNNER_TEMP/minidown-notarize.zip"
           ditto -c -k --sequesterRsrc --keepParent "$APP" "$SUBMIT_ZIP"
-          xcrun notarytool submit "$SUBMIT_ZIP" "${NOTARY_ARGS[@]}" --wait --timeout 30m
-          rm -f "$SUBMIT_ZIP" "$KEY_PATH"
+          # notarytool --wait can exit 0 even when status is Invalid; check explicitly and dump
+          # the rejection log so the next failure is readable without a separate lookup.
+          SUBMIT_JSON="$RUNNER_TEMP/notary-submit.json"
+          xcrun notarytool submit "$SUBMIT_ZIP" "${NOTARY_ARGS[@]}" \
+            --wait --timeout 30m --output-format json | tee "$SUBMIT_JSON"
+          STATUS=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])' < "$SUBMIT_JSON")
+          SUBMISSION_ID=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' < "$SUBMIT_JSON")
+          if [ "$STATUS" != "Accepted" ]; then
+            echo "::error::Notarization status was $STATUS (expected Accepted)."
+            xcrun notarytool log "$SUBMISSION_ID" "${NOTARY_ARGS[@]}" || true
+            exit 1
+          fi
+          rm -f "$SUBMIT_ZIP" "$KEY_PATH" "$SUBMIT_JSON"
 
           xcrun stapler staple "$APP"
           xcrun stapler validate "$APP"
@@ -263,3 +294,4 @@ jobs:
           if [ -n "${KEYCHAIN_PATH:-}" ] && [ -f "$KEYCHAIN_PATH" ]; then
             security delete-keychain "$KEYCHAIN_PATH" || true
           fi
+          rm -f "$RUNNER_TEMP/keychain-password"
