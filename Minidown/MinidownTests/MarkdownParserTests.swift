@@ -1,7 +1,18 @@
 import XCTest
 @testable import Minidown
 
+@MainActor
 final class MarkdownParserTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        WebBlockRenderer.isEnabled = false
+    }
+
+    override func tearDown() {
+        WebBlockRenderer.isEnabled = true
+        super.tearDown()
+    }
+
     func testRecognizesCoreSyntax() {
         let doc = """
         # Heading
@@ -114,16 +125,10 @@ final class MarkdownParserTests: XCTestCase {
     }
 
     func testExampleDocumentsParse() throws {
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("examples")
-        let files = try FileManager.default.contentsOfDirectory(atPath: root.path)
-            .filter { $0.hasSuffix(".md") }
+        let files = try ExampleDocuments.allMarkdownNames()
         XCTAssertFalse(files.isEmpty)
         for file in files {
-            let text = try String(contentsOf: root.appendingPathComponent(file), encoding: .utf8)
+            let text = try ExampleDocuments.text(named: file)
             for pos in [0, text.utf16.count / 2, text.utf16.count] {
                 XCTAssertNoThrow(MarkdownParser.parse(text), file)
                 XCTAssertNoThrow(

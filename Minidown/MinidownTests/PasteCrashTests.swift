@@ -34,14 +34,8 @@ final class PasteCrashTests: XCTestCase {
         WebBlockRenderer.isEnabled = true
         defer { WebBlockRenderer.isEnabled = false }
 
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("examples")
-
         for name in ["04-torture-test.md", "06-extended.md"] {
-            let text = try String(contentsOf: root.appendingPathComponent(name), encoding: .utf8)
+            let text = try ExampleDocuments.text(named: name)
             let storage = NSTextStorage(string: text)
             let layout = CollapsingLayoutManager()
             let container = NSTextContainer(size: NSSize(width: 640, height: 10_000))
@@ -54,7 +48,6 @@ final class PasteCrashTests: XCTestCase {
                     text: text,
                     options: .init(
                         selection: NSRange(location: text.utf16.count, length: 0),
-                        focusMode: false,
                         directoryURL: nil,
                         isDark: true
                     )

@@ -7,48 +7,174 @@ options:
   developmentLanguage: en
 settings:
   base:
-    MARKETING_VERSION: "0.2.0"
-    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "0.3.0"
+    # Kept in step with MARKETING_VERSION as major*10000 + minor*100 + patch, which is what the
+    # release workflow derives from the tag. A hardcoded "1" is the usual default and a trap: it
+    # feeds CFBundleVersion, and an update whose CFBundleVersion does not increase is one Sparkle
+    # will silently never offer — no error, no log, it simply never appears.
+    CURRENT_PROJECT_VERSION: "300"
     SWIFT_VERSION: "5.0"
     MACOSX_DEPLOYMENT_TARGET: "14.0"
 packages:
+  # Pinned to exact revisions: swift-markdown has no release tags and is consumed
+  # from `main`, so a branch pin would silently rebuild against moving upstream.
+  # This is the revision the suite is green against.
   swift-markdown:
     url: https://github.com/swiftlang/swift-markdown.git
-    branch: main
+    revision: 27b7fc1a19068bcea3d2072db0ce86360d1400ed
   Splash:
     url: https://github.com/JohnSundell/Splash.git
-    from: 0.9.0
+    exactVersion: 0.16.0
+  # exactVersion, never `from:` — the tag list is non-monotonic. A stray 0.25.0 tag from 2025-06
+  # is older code than 0.10.0 from 2026-02, so `from: "0.10.0"` resolves *backwards*.
+  swift-tree-sitter:
+    url: https://github.com/tree-sitter/swift-tree-sitter
+    exactVersion: 0.10.0
+  # 0.25.0 manifests for javascript/python/css contain an upstream bug: they probe for the
+  # external scanner with `FileManager.fileExists(atPath: "src/scanner.c")` — a path relative to
+  # the manifest's working directory, which is not the package root when built as a dependency.
+  # scanner.c is silently dropped and the link fails on undefined external_scanner symbols.
+  # These tags hardcode both sources.
+  TreeSitterJavaScript:
+    url: https://github.com/tree-sitter/tree-sitter-javascript
+    exactVersion: 0.23.1
+  TreeSitterTypeScript:
+    url: https://github.com/tree-sitter/tree-sitter-typescript
+    exactVersion: 0.23.2
+  TreeSitterPython:
+    url: https://github.com/tree-sitter/tree-sitter-python
+    exactVersion: 0.23.6
+  TreeSitterRust:
+    url: https://github.com/tree-sitter/tree-sitter-rust
+    exactVersion: 0.24.2
+  TreeSitterCSS:
+    url: https://github.com/tree-sitter/tree-sitter-css
+    exactVersion: 0.23.2
+  TreeSitterJSON:
+    url: https://github.com/tree-sitter/tree-sitter-json
+    exactVersion: 0.24.8
+  TreeSitterHTML:
+    url: https://github.com/tree-sitter/tree-sitter-html
+    exactVersion: 0.23.2
+  TreeSitterBash:
+    url: https://github.com/tree-sitter/tree-sitter-bash
+    exactVersion: 0.25.1
 targets:
   Minidown:
     type: application
     platform: macOS
     sources:
       - path: Minidown
+        excludes:
+          - "WebAssets/**"
+          - "Fonts/**"
+      # A folder reference, not a glob: KaTeX and Mermaid load each other by relative path, so the
+      # directory structure has to survive into the bundle. Globbed, the files get flattened into
+      # Resources/ and the stylesheet can no longer find its fonts.
+      - path: Minidown/WebAssets
+        buildPhase: resources
+        type: folder
+      # Registered at launch by EditorFonts. DM Sans and Fira Code are SIL OFL 1.1, which permits
+      # redistribution; their licence files travel with them.
+      - path: Minidown/Fonts
+        buildPhase: resources
+        type: folder
     dependencies:
       - package: swift-markdown
         product: Markdown
+      - package: swift-tree-sitter
+        product: SwiftTreeSitter
+      - package: TreeSitterJavaScript
+        product: TreeSitterJavaScript
+      - package: TreeSitterTypeScript
+        product: TreeSitterTypeScript
+      - package: TreeSitterPython
+        product: TreeSitterPython
+      - package: TreeSitterRust
+        product: TreeSitterRust
+      - package: TreeSitterCSS
+        product: TreeSitterCSS
+      - package: TreeSitterJSON
+        product: TreeSitterJSON
+      - package: TreeSitterHTML
+        product: TreeSitterHTML
+      - package: TreeSitterBash
+        product: TreeSitterBash
+      # Splash stays, for Swift only. It ships exactly one grammar, and keeping it avoids adding
+      # alex-pinkus/tree-sitter-swift, whose generated parser.c alone is 19.7 MB.
       - package: Splash
+    # CFBundleDocumentTypes is an array of dictionaries and has no INFOPLIST_KEY_ equivalent, so a
+    # real generated plist is required. Without it the app declares no document types at all and
+    # `.md` files can never open from Finder.
+    info:
+      path: Minidown/Info.plist
+      properties:
+        CFBundleDisplayName: minidown
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSApplicationCategoryType: public.app-category.productivity
+        NSHumanReadableCopyright: "Copyright © 2026 Asit Khanda. AGPL-3.0."
+        LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
+        NSSupportsAutomaticTermination: true
+        NSSupportsSuddenTermination: true
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Markdown Document
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Owner
+            LSItemContentTypes:
+              - net.daringfireball.markdown
+          - CFBundleTypeName: Plain Text Document
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.plain-text
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: net.daringfireball.markdown
+            UTTypeDescription: Markdown Document
+            UTTypeConformsTo:
+              - public.plain-text
+            UTTypeTagSpecification:
+              public.filename-extension:
+                - md
+                - markdown
+                - mdown
+                - mkd
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.humanx.minidown
-        INFOPLIST_KEY_CFBundleDisplayName: minidown
-        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
-        INFOPLIST_KEY_NSHumanReadableCopyright: "Copyright © Asit Khanda. AGPL-3.0."
-        INFOPLIST_KEY_CFBundleShortVersionString: "0.2.0"
-        GENERATE_INFOPLIST_FILE: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_HARDENED_RUNTIME: YES
         CODE_SIGN_ENTITLEMENTS: Minidown/Minidown.entitlements
         CODE_SIGN_STYLE: Automatic
         COMBINE_HIDPI_IMAGES: YES
         LD_RUNPATH_SEARCH_PATHS: "@executable_path/../Frameworks"
         ENABLE_TESTABILITY: YES
+    # XcodeGen owns this file, so the keys must live here — writing them into the .entitlements
+    # directly gets overwritten on the next `xcodegen generate`.
+    #
+    # Nothing needs ambient filesystem access: documents arrive via the open panel or Finder,
+    # which grant access to exactly those files, and export writes to a save-panel URL.
+    #
+    # network.client is required for two reasons: the README supports images referenced by remote
+    # URL, and a sandboxed WKWebView needs it to bring up its helper processes at all — without it
+    # the math/diagram renderer silently never completes a navigation.
     entitlements:
       path: Minidown/Minidown.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.files.user-selected.read-write: true
+        com.apple.security.network.client: true
   MinidownTests:
     type: bundle.unit-test
     platform: macOS
     sources:
       - path: MinidownTests
+      # Copied into the test bundle rather than read from the source tree via #filePath.
+      # The repo commonly lives under ~/Documents, which is TCC-protected, and App Sandbox
+      # would cut off source-tree reads entirely.
+      - path: ../examples
+        buildPhase: resources
+        type: folder
     dependencies:
       - target: Minidown
     settings:

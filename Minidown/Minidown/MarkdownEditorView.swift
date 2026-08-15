@@ -2,22 +2,28 @@ import AppKit
 import SwiftUI
 
 struct MarkdownEditorView: NSViewRepresentable {
-    @EnvironmentObject var store: DocumentStore
+    @ObservedObject var document: MarkdownDocument
+    var chrome: ChromeStyle = .solid
+    @AppStorage("colorTheme") private var colorThemeID = EditorTheme.minidown.id
+    @EnvironmentObject var settings: EditorSettings
+    @Environment(\.undoManager) private var undoManager
     @AppStorage("fontFamily") private var fontFamilyRaw = EditorFontFamily.sansSerif.rawValue
 
     private var fontFamily: EditorFontFamily {
         EditorFontFamily(rawValue: fontFamilyRaw) ?? .sansSerif
     }
 
-    func makeCoordinator() -> Coordinator { Coordinator(store: store) }
+    func makeCoordinator() -> Coordinator { Coordinator(document: document, settings: settings) }
 
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSScrollView()
         scroll.hasVerticalScroller = true
         scroll.hasHorizontalScroller = false
         scroll.borderType = .noBorder
-        scroll.drawsBackground = true
-        scroll.backgroundColor = AppColors.background
+        // Under Liquid Glass the editor must not paint its own surface — an opaque background
+        // here would sit on top of the material and defeat it entirely.
+        scroll.drawsBackground = !chrome.usesGlass
+        scroll.backgroundColor = AppColors.editorBackground(glass: chrome.usesGlass)
         scroll.autohidesScrollers = true
 
         let contentSize = scroll.contentSize
@@ -27,6 +33,7 @@ struct MarkdownEditorView: NSViewRepresentable {
 
         let layoutManager = CollapsingLayoutManager()
         let storage = NSTextStorage()
+        storage.delegate = context.coordinator
         storage.addLayoutManager(layoutManager)
         layoutManager.addTextContainer(container)
 
@@ -40,12 +47,10 @@ struct MarkdownEditorView: NSViewRepresentable {
         textView.isAutomaticSpellingCorrectionEnabled = false
         textView.isEditable = true
         textView.isSelectable = true
-        textView.drawsBackground = true
-        textView.backgroundColor = AppColors.background
+        textView.drawsBackground = !chrome.usesGlass
+        textView.backgroundColor = AppColors.editorBackground(glass: chrome.usesGlass)
         textView.insertionPointColor = AppColors.accent
-        textView.selectedTextAttributes = [
-            .backgroundColor: AppColors.accent.withAlphaComponent(0.22)
-        ]
+        textView.selectedTextAttributes = [.backgroundColor: AppColors.selection]
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
@@ -64,42 +69,93 @@ struct MarkdownEditorView: NSViewRepresentable {
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        context.coordinator.store = store
+        context.coordinator.document = document
+        context.coordinator.settings = settings
+        context.coordinator.undoManager = undoManager
         context.coordinator.fontFamily = fontFamily
+        context.coordinator.colorThemeID = colorThemeID
+        context.coordinator.chrome = chrome
         context.coordinator.syncFromStoreIfNeeded()
         context.coordinator.applyTypewriterChrome(force: false)
         context.coordinator.applyStyle(force: false)
-        scrollView.backgroundColor = AppColors.background
-        (scrollView.documentView as? NSTextView)?.backgroundColor = AppColors.background
+        let glass = chrome.usesGlass
+        scrollView.drawsBackground = !glass
+        scrollView.backgroundColor = AppColors.editorBackground(glass: glass)
+        if let textView = scrollView.documentView as? NSTextView {
+            textView.drawsBackground = !glass
+            textView.backgroundColor = AppColors.editorBackground(glass: glass)
+        }
     }
 
     @MainActor
-    final class Coordinator: NSObject, NSTextViewDelegate {
-        var store: DocumentStore
+    final class Coordinator: NSObject, NSTextViewDelegate, NSTextStorageDelegate {
+        var document: MarkdownDocument
+        var settings: EditorSettings
+        var undoManager: UndoManager?
         var fontFamily: EditorFontFamily = .sansSerif
+        var colorThemeID: String = EditorTheme.minidown.id
+        var chrome: ChromeStyle = .solid
         weak var textView: EditorTextView?
         weak var layoutManager: CollapsingLayoutManager?
         weak var scrollView: NSScrollView?
 
+        private let session = LivePreviewSession(parseMode: .background)
         private var applying = false
         private var lastText: String?
         private var lastSelection = NSRange(location: 0, length: 0)
-        private var lastFocus = false
         private var lastTypewriter = false
         private var lastDark: Bool?
         private var lastFontFamily: EditorFontFamily?
+        private var lastColorTheme: String?
         private var lastViewportHeight: CGFloat = 0
+        /// Set by the text storage delegate, consumed by the next restyle.
+        private var pendingEdit: (range: NSRange, delta: Int)?
 
-        init(store: DocumentStore) {
-            self.store = store
+        init(document: MarkdownDocument, settings: EditorSettings) {
+            self.document = document
+            self.settings = settings
+            super.init()
+            // A background parse can change collapse/widget attributes after the fact.
+            session.onReconciled = { [weak self] in
+                self?.layoutManager?.refreshCollapsedGlyphs()
+            }
+        }
+
+        // MARK: - NSTextStorageDelegate
+
+        /// Records what an edit touched so the restyle can be narrowed to it.
+        ///
+        /// Only observes here — attributes are applied later, from `applyStyle`. Writing them
+        /// inside `processEditing` would re-enter this callback, and layout invalidation is not
+        /// permitted from here at all.
+        nonisolated func textStorage(
+            _ textStorage: NSTextStorage,
+            didProcessEditing editedMask: NSTextStorageEditActions,
+            range editedRange: NSRange,
+            changeInLength delta: Int
+        ) {
+            guard editedMask.contains(.editedCharacters) else { return }
+            MainActor.assumeIsolated {
+                if let existing = pendingEdit {
+                    // Coalesce bursts (autocorrect, paste) into one covering range.
+                    pendingEdit = (NSUnionRange(existing.range, editedRange), existing.delta + delta)
+                } else {
+                    pendingEdit = (editedRange, delta)
+                }
+            }
         }
 
         func syncFromStoreIfNeeded() {
             guard let textView, !applying else { return }
-            if textView.string != store.text {
+            // Replacing `string` mid-composition destroys the IME's provisional text.
+            guard !textView.hasMarkedText() else { return }
+            if textView.string != document.text {
                 applying = true
-                textView.string = store.text
+                textView.string = document.text
                 applying = false
+                // A wholesale document swap invalidates every cached construct range.
+                session.invalidate()
+                pendingEdit = nil
                 lastText = nil
             }
         }
@@ -109,18 +165,21 @@ struct MarkdownEditorView: NSViewRepresentable {
             let viewport = scrollView.contentView.bounds.height
             let needs =
                 force
-                || lastTypewriter != store.typewriter
+                || lastTypewriter != settings.typewriter
                 || abs(lastViewportHeight - viewport) > 1
             guard needs else { return }
 
             // Match Tauri: ~45vh vertical padding while typewriter is on so the caret can sit
             // in the vertical center. textContainerInset.height applies to both top and bottom.
-            let pad = store.typewriter ? max(viewport * 0.45, 160) : 28
+            let pad = settings.typewriter ? max(viewport * 0.45, 160) : 28
             textView.textContainerInset = NSSize(width: 56, height: pad)
-            textView.minSize = NSSize(width: 0, height: max(viewport, textView.minSize.height))
+            // Track the viewport rather than growing monotonically: the old
+            // `max(viewport, textView.minSize.height)` meant shrinking the window left the text
+            // view stuck at its largest size, with dead scroll space below the text.
+            textView.minSize = NSSize(width: 0, height: viewport)
 
-            let turnedOn = store.typewriter && (force || !lastTypewriter)
-            lastTypewriter = store.typewriter
+            let turnedOn = settings.typewriter && (force || !lastTypewriter)
+            lastTypewriter = settings.typewriter
             lastViewportHeight = viewport
             if turnedOn {
                 DispatchQueue.main.async { [weak self] in
@@ -131,46 +190,95 @@ struct MarkdownEditorView: NSViewRepresentable {
 
         func applyStyle(force: Bool) {
             guard let textView, let storage = textView.textStorage, let layoutManager else { return }
+            // Restyling during IME composition rewrites the marked run's attributes and can abort
+            // the composition outright. Wait for it to commit.
+            guard !textView.hasMarkedText() else { return }
+
             let text = textView.string
             let selection = textView.selectedRange()
             let dark = textView.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            let needs =
-                force
-                || lastText != text
-                || lastSelection != selection
-                || lastFocus != store.focusMode
-                || lastDark != dark
-                || lastFontFamily != fontFamily
+
+            // The drawing code looks widgets up by the same key the styler stored them under.
+            layoutManager.isDark = dark
+            layoutManager.fontFamily = fontFamily
+            layoutManager.documentDirectory = document.directoryURL
+
+            // Focus dimming is a draw-time concern now, so a caret move inside the same paragraph
+            // costs one invalidateDisplay rather than a restyle.
+            updateFocusRange(text: text, selection: selection, layoutManager: layoutManager)
+
+            // Applying here rather than in the view keeps the store and the restyle in step.
+            let themeChanged = ThemeStore.select(id: colorThemeID) || lastColorTheme != colorThemeID
+            if themeChanged {
+                textView.selectedTextAttributes = [.backgroundColor: AppColors.selection]
+                textView.insertionPointColor = AppColors.accent
+                textView.backgroundColor = AppColors.editorBackground(glass: self.chrome.usesGlass)
+            }
+
+            let textChanged = lastText != text
+            let presentationChanged = lastDark != dark || lastFontFamily != fontFamily || themeChanged
+            let selectionChanged = lastSelection != selection
+            let needs = force || textChanged || presentationChanged || selectionChanged
             guard needs else { return }
 
-            applying = true
-            let selected = textView.selectedRange()
-            LivePreviewStyler.apply(
-                to: storage,
-                text: text,
-                options: .init(
-                    selection: selection,
-                    focusMode: store.focusMode,
-                    directoryURL: store.directoryURL,
-                    isDark: dark,
-                    fontFamily: fontFamily,
-                    onNeedsRefresh: { [weak self] in
-                        self?.scheduleAsyncRefresh()
-                    }
-                )
+            let options = LivePreviewStyler.Options(
+                selections: textView.selectedRanges.map(\.rangeValue),
+                directoryURL: document.directoryURL,
+                isDark: dark,
+                fontFamily: fontFamily,
+                onNeedsRefresh: { [weak self] in
+                    self?.scheduleAsyncRefresh()
+                }
             )
+
+            applying = true
+            let edit = pendingEdit
+            pendingEdit = nil
+
+            if presentationChanged || lastText == nil {
+                // Appearance or font affects every run; nothing to narrow.
+                session.applyFull(to: storage, text: text, options: options)
+            } else if textChanged, let edit {
+                session.applyEdit(
+                    to: storage,
+                    text: text,
+                    editedRange: edit.range,
+                    changeInLength: edit.delta,
+                    options: options
+                )
+            } else if textChanged {
+                session.applyFull(to: storage, text: text, options: options)
+            } else {
+                session.applySelectionChange(to: storage, text: text, options: options)
+            }
+
             layoutManager.refreshCollapsedGlyphs()
-            let maxLoc = textView.string.utf16.count
-            let loc = min(selected.location, maxLoc)
-            let len = min(selected.length, max(0, maxLoc - loc))
-            textView.setSelectedRange(NSRange(location: loc, length: len))
             applying = false
 
             lastText = text
             lastSelection = selection
-            lastFocus = store.focusMode
             lastDark = dark
             lastFontFamily = fontFamily
+            lastColorTheme = colorThemeID
+        }
+
+        private func updateFocusRange(
+            text: String,
+            selection: NSRange,
+            layoutManager: CollapsingLayoutManager
+        ) {
+            guard settings.focusMode else {
+                layoutManager.focusRange = nil
+                return
+            }
+            // drawBackground also paints the selection highlight, so dimming a selection that
+            // reaches past the focused paragraph reads as a rendering fault. Light everything.
+            layoutManager.dimFactor = selection.length > 0 ? 1 : 0.32
+            let focus = RevealPolicy.focusRange(in: text, at: selection.location)
+            layoutManager.focusRange = NSRange(
+                location: focus.from,
+                length: max(0, focus.to - focus.from)
+            )
         }
 
         private var asyncRefreshWork: DispatchWorkItem?
@@ -188,36 +296,36 @@ struct MarkdownEditorView: NSViewRepresentable {
 
         func textDidChange(_ notification: Notification) {
             guard let textView, !applying else { return }
-            store.updateText(textView.string)
+            // The document buffer is authoritative even mid-composition, so the store still tracks
+            // it; only the restyle waits (applyStyle guards on marked text itself).
+            document.updateText(textView.string, undoManager: undoManager)
             lastText = nil
             applyStyle(force: true)
-            if store.typewriter { centerCaret() }
+            if settings.typewriter, !textView.hasMarkedText() { centerCaret() }
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
             guard let textView, !applying else { return }
             let sel = textView.selectedRange()
-            store.updateSelection(location: sel.location, length: sel.length)
+            document.updateSelection(location: sel.location, length: sel.length)
             applyStyle(force: false)
         }
 
-        func handleClick(at characterIndex: Int) -> Bool {
+        /// Flips a task checkbox, writing `[x]` / `[ ]` straight back into the document.
+        ///
+        /// The one place rendering is allowed to mutate text, per CONTRIBUTING's round-trip
+        /// invariant. Driven by the layout manager's already-computed hit targets rather than
+        /// re-parsing the whole document on every mouse-down.
+        func toggleTask(_ target: (charRange: NSRange, checked: Bool)) -> Bool {
             guard let textView else { return false }
-            let text = textView.string
-            for c in MarkdownParser.parse(text) {
-                if case .taskMarker(let checked) = c.kind,
-                   characterIndex >= c.from, characterIndex < c.to
-                {
-                    let replacement = checked ? "[ ]" : "[x]"
-                    let range = NSRange(location: c.from, length: 3)
-                    if textView.shouldChangeText(in: range, replacementString: replacement) {
-                        textView.replaceCharacters(in: range, with: replacement)
-                        textView.didChangeText()
-                    }
-                    return true
-                }
+            guard NSMaxRange(target.charRange) <= (textView.string as NSString).length else { return false }
+            let replacement = target.checked ? "[ ]" : "[x]"
+            guard textView.shouldChangeText(in: target.charRange, replacementString: replacement) else {
+                return false
             }
-            return false
+            textView.replaceCharacters(in: target.charRange, with: replacement)
+            textView.didChangeText()
+            return true
         }
 
         func centerCaret() {
@@ -250,14 +358,14 @@ struct MarkdownEditorView: NSViewRepresentable {
 final class EditorTextView: NSTextView {
     override func mouseDown(with event: NSEvent) {
         let pointInView = convert(event.locationInWindow, from: nil)
-        if let layoutManager = layoutManager as? CollapsingLayoutManager, let textContainer {
+        if let layoutManager = layoutManager as? CollapsingLayoutManager {
             let pointInContainer = NSPoint(
                 x: pointInView.x - textContainerOrigin.x,
                 y: pointInView.y - textContainerOrigin.y
             )
-            let idx = layoutManager.characterIndexForInteraction(at: pointInContainer, fraction: nil)
-            if let coordinator = delegate as? MarkdownEditorView.Coordinator,
-               coordinator.handleClick(at: idx)
+            if let target = layoutManager.taskTarget(at: pointInContainer),
+               let coordinator = delegate as? MarkdownEditorView.Coordinator,
+               coordinator.toggleTask(target)
             {
                 return
             }

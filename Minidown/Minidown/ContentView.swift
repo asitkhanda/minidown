@@ -2,40 +2,30 @@ import AppKit
 import SwiftUI
 
 struct ContentView: View {
-    @EnvironmentObject private var store: DocumentStore
+    @ObservedObject var document: MarkdownDocument
+    let fileURL: URL?
+    let chrome: ChromeStyle
+
+    @EnvironmentObject private var settings: EditorSettings
 
     var body: some View {
         VStack(spacing: 0) {
-            Color.clear
-                .frame(height: 44)
-                .background(WindowDragRegion())
+            MarkdownEditorView(document: document, chrome: chrome)
+                .environmentObject(settings)
 
-            MarkdownEditorView()
-                .environmentObject(store)
-
-            StatusBarView()
-                .environmentObject(store)
+            StatusBarView(document: document, chrome: chrome)
+                .environmentObject(settings)
         }
-        .background(Color(nsColor: AppColors.background))
-        .ignoresSafeArea()
-        .onAppear {
-            NSApp.windows.first?.title = store.windowTitle
+        // The backdrop sits behind everything and provides the window surface. Under glass the
+        // editor and status bar are transparent so this material is what the writer actually sees.
+        .background {
+            GlassBackdrop(style: chrome, tint: nil)
+                .ignoresSafeArea()
         }
-        .onChange(of: store.windowTitle) { _, title in
-            NSApp.windows.first?.title = title
-        }
-    }
-}
-
-private struct WindowDragRegion: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView {
-        let view = DragView()
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {}
-
-    private final class DragView: NSView {
-        override var mouseDownCanMoveWindow: Bool { true }
+        .onAppear { document.fileURL = fileURL }
+        .onChange(of: fileURL) { _, url in document.fileURL = url }
+        // Publishes the front-most document to the menu bar's export commands.
+        .focusedSceneValue(\.documentText, document.text)
+        .focusedSceneValue(\.documentURL, fileURL)
     }
 }

@@ -23,9 +23,6 @@ final class LivePreviewTests: XCTestCase {
         1. [ ] ordered unchecked
         2. [x] ordered checked
           - [ ] indented
-        [ ] bare unchecked
-        [x] bare checked
-        [X] bare upper
         """
         let ranges = MarkdownParser.parse(doc)
         let tasks = ranges.compactMap { c -> (Bool, String)? in
@@ -35,33 +32,39 @@ final class LivePreviewTests: XCTestCase {
             return (checked, slice)
         }
 
-        XCTAssertEqual(tasks.count, 9, "expected every task line to parse, got \(tasks)")
-        XCTAssertEqual(tasks.filter(\.0).count, 5, "checked count")
-        XCTAssertEqual(tasks.filter { !$0.0 }.count, 4, "unchecked count")
+        XCTAssertEqual(tasks.count, 6, "expected every GFM task line to parse, got \(tasks)")
+        XCTAssertEqual(tasks.filter(\.0).count, 3, "checked count")
+        XCTAssertEqual(tasks.filter { !$0.0 }.count, 3, "unchecked count")
 
         let listMarks = ranges.filter { if case .taskListMark = $0.kind { return true }; return false }
         XCTAssertEqual(listMarks.count, 6, "list-prefixed tasks hide their '- '/'* '/'+ '/'1. ' mark")
     }
 
-    func testBareTaskHidesWhenUnfocused() {
-        let doc = "[ ] Checklist\n\nbody"
-        let outside = LivePreviewStyler.hiddenMarkRanges(
-            in: doc,
-            selection: NSRange(location: doc.utf16.count, length: 0)
-        )
-        XCTAssertTrue(
-            outside.contains { $0.location == 0 && $0.length == 3 },
-            "bare [ ] must collapse when caret is away — this is what the user typed"
-        )
+    /// Bare `[ ]` with no list marker was a 0.2.0 extension. It was dropped: anything written that
+    /// way renders as literal brackets in GitHub, Obsidian and every other Markdown tool, so the
+    /// file was only a checklist inside minidown.
+    func testBareBracketsAreNotTasks() {
+        let doc = "[ ] Checklist\n[x] done\n\nbody"
+        let tasks = MarkdownParser.parse(doc).filter {
+            if case .taskMarker = $0.kind { return true }
+            return false
+        }
+        XCTAssertTrue(tasks.isEmpty, "bare brackets are not GFM tasks and must stay literal")
+    }
 
-        let onMarker = LivePreviewStyler.hiddenMarkRanges(
-            in: doc,
-            selection: NSRange(location: 1, length: 0)
-        )
-        XCTAssertFalse(
-            onMarker.contains { $0.location == 0 && $0.length == 3 },
-            "raw [ ] should reveal while editing the marker"
-        )
+    /// Nested items indented four or more spaces used to miss their bullet, because the marker was
+    /// matched with a `^ {0,3}` regex instead of read from the list item's own start.
+    func testDeeplyNestedBulletsStillHideTheirMarker() {
+        let doc = """
+        - top level
+            - nested four spaces
+                - nested eight spaces
+        """
+        let bullets = MarkdownParser.parse(doc).filter {
+            if case .bulletMark = $0.kind { return true }
+            return false
+        }
+        XCTAssertEqual(bullets.count, 3, "every nesting depth should hide its bullet")
     }
 
     func testMidLineBracketsAreNotTasks() {
@@ -107,7 +110,6 @@ final class LivePreviewTests: XCTestCase {
             text: doc,
             options: .init(
                 selection: NSRange(location: doc.utf16.count, length: 0),
-                focusMode: false,
                 directoryURL: nil,
                 isDark: true
             )
@@ -128,7 +130,7 @@ final class LivePreviewTests: XCTestCase {
 
     func testTaskMarkerKeepsWidthAndStaysOnItsLine() {
         // Reproduces the bug: checkbox was painted on the heading above.
-        let doc = "# Hello\n[x]Hello world"
+        let doc = "# Hello\n- [x] Hello world"
         let storage = NSTextStorage(string: doc)
         let layout = CollapsingLayoutManager()
         let container = NSTextContainer(size: NSSize(width: 500, height: 800))
@@ -140,7 +142,6 @@ final class LivePreviewTests: XCTestCase {
             text: doc,
             options: .init(
                 selection: NSRange(location: doc.utf16.count, length: 0),
-                focusMode: false,
                 directoryURL: nil,
                 isDark: true
             )
@@ -191,7 +192,6 @@ final class LivePreviewTests: XCTestCase {
             text: doc,
             options: .init(
                 selection: NSRange(location: doc.utf16.count, length: 0),
-                focusMode: false,
                 directoryURL: nil,
                 isDark: true
             )
@@ -253,7 +253,14 @@ final class LivePreviewTests: XCTestCase {
         | :--- | ---: |
         | a | b |
         """
-        let image = TableRenderer.bitmap(from: raw, maxWidth: 400, dark: true)
+        guard let table = MarkdownParser.parse(raw).compactMap({ range -> MarkdownTable? in
+            if case .table(let data) = range.kind { return data }
+            return nil
+        }).first else {
+            XCTFail("expected a table construct")
+            return
+        }
+        let image = TableRenderer.image(for: table, maxWidth: 400, dark: true)
         XCTAssertGreaterThan(image.size.width, 40)
         XCTAssertGreaterThan(image.size.height, 20)
     }
@@ -270,7 +277,6 @@ final class LivePreviewTests: XCTestCase {
             ("`code`\n\nbody", "code"),
             ("para\n\n---\n\nbody", "hr"),
             ("- [ ] task\n\nbody", "gfm task"),
-            ("[ ] bare\n\nbody", "bare task"),
         ]
         for (doc, label) in samples {
             let hidden = LivePreviewStyler.hiddenMarkRanges(
