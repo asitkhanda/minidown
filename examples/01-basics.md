@@ -39,8 +39,7 @@ Bare URLs autolink: https://tauri.app
 - [x] Already finished
 * [ ] Star marker also works
 1. [ ] Ordered tasks work too
-[ ] Bare checkbox (no list marker) works
-[x] Bare checked item
+    - [ ] Nested tasks work at any depth
 
 ---
 

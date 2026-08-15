@@ -6,7 +6,7 @@ minidown gives you a Typora-style live preview — syntax renders in place and
 hides when your cursor leaves it — while your file stays plain Markdown,
 byte for byte. No lock-in, no reformatting your source, no feature bloat.
 
-> One window, your text, nothing else.
+> Your text, nothing else.
 
 ## Why minidown
 
@@ -18,22 +18,25 @@ lock-in) or see your source (raw syntax everywhere). minidown does neither:
 - **Your Markdown stays yours.** Rendering is presentation-only — minidown
   never rewrites, normalizes, or reformats the text you typed. What you save
   is exactly what you wrote.
-- **Genuinely native.** A SwiftUI + AppKit app on macOS — fast startup, one
-  window, a whisper-quiet status bar.
+- **Genuinely native.** A SwiftUI + AppKit document app on macOS — fast startup,
+  Finder integration, and a whisper-quiet status bar.
 
 ## Features
 
 ### Live preview
 - Headings, bold, italic, strikethrough, inline code, links, and blockquotes
   render in place; their marks reveal when the cursor touches them
-- Bullets and task lists; clicking a task checkbox writes `[x]` / `[ ]` back
-  into the file
-- Code fences render as monospace blocks with Splash highlighting; Mermaid
-  fences render as diagrams when the caret is outside
+- Bullets and GFM task lists (`- [ ]`); clicking a checkbox writes `[x]` / `[ ]`
+  back into the file
+- Code fences render as monospace blocks, highlighted per language via
+  tree-sitter (js, ts, python, rust, css, json, html, shell) and Splash for
+  Swift; Mermaid fences render as diagrams when the caret is outside
 - Tables render as a real grid when the caret is outside; click in to edit
   pipe syntax
 - Images render inline (remote URLs and paths relative to the open file)
-- Math (`$…$` / `$$…$$`) renders via KaTeX snapshots when the caret is outside
+- Math (`$…$` / `$$…$$`) renders via KaTeX when the caret is outside — inline
+  math sits on the text baseline, display math takes its own line. KaTeX and
+  Mermaid are bundled, so rendering works offline
 
 ### Full syntax
 CommonMark + GFM, plus:
@@ -47,7 +50,17 @@ CommonMark + GFM, plus:
 - **Focus mode** (⌘D) — dims everything but the paragraph you're writing
 - **Typewriter scrolling** (⌥⌘T) — your line stays vertically centered while
   you type; clicks and arrow keys never jump the view
-- **Appearance** — system, light, or dark (View → Appearance)
+- **Liquid Glass by default** on macOS 26+ — the window, status bar and controls
+  use native Liquid Glass, in both light and dark. Older systems fall back to a
+  vibrant material automatically (View → Window)
+- **Colour themes** — minidown, Solarized, Nord, Dracula, Gruvbox and One.
+  Each ships the project's own light *and* dark palette, so a theme follows your
+  appearance rather than overriding it (View → Theme)
+- **Appearance** — system, light or dark, independent of the theme and the
+  window material (View → Appearance)
+- **Editor font** — **DM Sans**, **Spectral** and **Fira Code**, all bundled.
+  Code always sets in Fira Code, ligatures and all, whatever the prose font is
+  (View → Font)
 - **Status bar** — filename and save state; Focus/Typewriter toggles; stats
   that cycle words → characters → reading time
 - Native macOS menu bar; autosave once a file has a name
@@ -74,14 +87,35 @@ CommonMark + GFM, plus:
 | Focus mode           | ⌘D   |
 | Typewriter scrolling | ⌥⌘T  |
 
+### Fonts
+
+All three faces ship with the app under the SIL Open Font License, with their
+licence files alongside them:
+
+| Face | Font | |
+| --- | --- | --- |
+| Sans Serif | [DM Sans](https://fonts.google.com/specimen/DM+Sans) | Colophon Foundry / Google |
+| Serif | [Spectral](https://fonts.google.com/specimen/Spectral) | Production Type |
+| Typewriter & code | [Fira Code](https://github.com/tonsky/FiraCode) | Mozilla, with ligatures |
+
 ## Install
 
-**Build from source:** requires macOS 14+, Xcode 15+, and
+```bash
+brew tap asitkhanda/minidown
+brew install --cask minidown
+```
+
+Update with `brew upgrade --cask minidown`.
+
+> **First launch.** Builds are not notarized yet, so macOS will ask you to confirm the app once:
+> **System Settings → Privacy & Security → Open Anyway**. See
+> [docs/RELEASING.md](docs/RELEASING.md) for why, and what it takes to remove that step.
+
+**Build from source:** requires macOS 14+, Xcode 16+, and
 [XcodeGen](https://github.com/yonaskolb/XcodeGen).
 
 ```sh
-git clone <this-repo>
-cd minidown/Minidown
+cd Minidown
 xcodegen generate
 open Minidown.xcodeproj
 ```
@@ -89,8 +123,6 @@ open Minidown.xcodeproj
 Or from the command line:
 
 ```sh
-cd Minidown
-xcodegen generate
 xcodebuild -scheme Minidown -destination 'platform=macOS' build
 ```
 

@@ -6,7 +6,7 @@ polish, and performance work are always welcome.
 
 ## Setup
 
-Requires macOS 14+, Xcode, and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
+Requires macOS 14+, Xcode 16+, and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
 
 ```sh
 cd Minidown
@@ -25,20 +25,42 @@ open Minidown.xcodeproj
 ## Architecture in one minute
 
 - `Minidown/Minidown/MarkdownEditorView.swift` — `NSTextView` bridge
+- `Minidown/Minidown/LivePreviewSession.swift` — narrows restyling to what
+  changed, and keeps the parse off the main thread
 - `Minidown/Minidown/LivePreviewStyler.swift` — presentation-only styling
+- `Minidown/Minidown/RevealPolicy.swift` — the hide/reveal rules, in one place
+- `Minidown/Minidown/CollapsingLayoutManager.swift` — glyph suppression, focus
+  dimming, and widget painting
 - `Minidown/Minidown/MarkdownParser.swift` — construct ranges (frontmatter,
   footnotes, math, fences, …)
-- `Minidown/Minidown/Exporter.swift` — export only; the editor never
-  round-trips through it
-- `Minidown/project.yml` — XcodeGen project definition
+- `Minidown/Minidown/HTMLExport.swift` — Markdown → HTML for export only; the
+  editor never round-trips through it
+- `Minidown/project.yml` — XcodeGen project definition. It owns `Info.plist`
+  and the entitlements file, so edit those *here*, not in the generated files.
 
-Two invariants to preserve:
+Three invariants to preserve:
 
 1. **Round-trip fidelity.** Rendering must never modify document text.
    Presentation only. The single exception is an explicit user action
    (e.g. clicking a task checkbox).
-2. **Reveal correctness.** Any construct whose syntax hides must reveal it
-   when the selection touches it.
+2. **Inline reveal.** Inline marks — `**`, `` ` ``, `#`, `>`, link syntax —
+   reveal whenever *any* selection range touches them, counting a caret resting
+   on either boundary. Multi-cursor included.
+3. **Block reveal.** Block constructs — tables, images, math, diagrams, rules —
+   reveal when the selection is *editing inside* them: a caret touching them, or
+   a selection with an endpoint within. A selection that merely spans a block
+   leaves its widget rendered, so ⌘A does not turn the document back into raw
+   source.
+
+Two things worth knowing before you touch the editor:
+
+- **Hiding is a glyph property, never a colour.** `.mdCollapse` gives a glyph
+  zero width; `.mdHidden` keeps its width but never paints it. Hiding with a
+  transparent `.foregroundColor` is what let focus mode resurrect raw syntax
+  underneath the widgets drawn on top of it.
+- **Focus dimming happens at draw time**, in the layout manager, not as
+  attributes. That keeps a caret move from costing a restyle, and keeps it
+  reversible.
 
 ## License
 
