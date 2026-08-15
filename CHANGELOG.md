@@ -112,6 +112,19 @@ port had drifted a long way from what the README describes; this closes the gap.
   is one View menu instead of two
 - Window minimum size (480×320) restored
 
+### Distribution
+
+- Releases are tag-driven: pushing a `v*` tag builds, tests, publishes a GitHub
+  Release and bumps a Homebrew cask, so updates arrive via `brew upgrade` rather
+  than a manual download-and-reinstall. Pushing to `main` ships nothing
+- CI and release builds moved to macOS 26 runners. Liquid Glass needs the
+  macOS 26 SDK to compile, so the older runner image could not have built this
+  release at all
+- `CURRENT_PROJECT_VERSION` is derived from the tag instead of being hardcoded
+  to `1`. It feeds `CFBundleVersion`, and a `CFBundleVersion` that does not
+  increase is an update Sparkle silently never offers
+- Source files carry `SPDX-License-Identifier: AGPL-3.0-or-later` headers
+
 ## 0.2.0 — 2026-08-15
 
 Native Swift rewrite. Replaces the Tauri + CodeMirror stack with a macOS

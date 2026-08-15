@@ -6,7 +6,11 @@ polish, and performance work are always welcome.
 
 ## Setup
 
-Requires macOS 14+, Xcode 16+, and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
+Requires **Xcode 26+** and [XcodeGen](https://github.com/yonaskolb/XcodeGen). The
+macOS 26 SDK is needed to compile the Liquid Glass chrome — the
+`#available(macOS 26.0, *)` guards are runtime checks and will not make
+`NSGlassEffectView` resolve against an older SDK. The app itself still targets
+macOS 14+.
 
 ```sh
 cd Minidown
@@ -62,7 +66,13 @@ Two things worth knowing before you touch the editor:
   attributes. That keeps a caret move from costing a restyle, and keeps it
   reversible.
 
+## Releases
+
+Merging to `main` ships nothing. Releases are tag-driven — see
+[`docs/RELEASING.md`](docs/RELEASING.md).
+
 ## License
 
 By contributing you agree your work is licensed under
-[AGPL-3.0](LICENSE).
+[AGPL-3.0-or-later](LICENSE). Source files carry an SPDX header; new files should
+too.

@@ -1,3 +1,13 @@
+// minidown — a minimal, distraction-free Markdown writer for macOS.
+// Copyright (C) 2026 Asit Khanda
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option) any
+// later version. See <https://www.gnu.org/licenses/>.
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import SwiftUI
 
 /// Menu bar.
@@ -102,8 +112,12 @@ struct AppCommands: Commands {
             NSApplication.AboutPanelOptionKey(rawValue: "Copyright"): "Copyright © 2026 Asit Khanda",
             .credits: NSAttributedString(
                 string: "A minimal, distraction-free Markdown writer.\n"
-                    + "Licensed under AGPL-3.0.\n\n"
-                    + "Bundles KaTeX and Mermaid (MIT), and tree-sitter grammars (MIT).",
+                    + "Licensed under AGPL-3.0-or-later.\n\n"
+                    + "Bundles KaTeX, Mermaid, tree-sitter and its grammars, Splash "
+                    + "and Phosphor Icons (MIT); SwiftTreeSitter (BSD-3-Clause); "
+                    + "swift-markdown (Apache-2.0); and the DM Sans, Spectral and "
+                    + "Fira Code typefaces (SIL Open Font Licence 1.1). "
+                    + "Full licence texts ship alongside each.",
                 attributes: [.font: NSFont.systemFont(ofSize: 11)]
             ),
         ])

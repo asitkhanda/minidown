@@ -82,9 +82,11 @@ Open `examples/06-extended.md`:
 - [ ] Cut/Copy/Paste/Select All work via menu and keys
 - [ ] View → Focus Mode and Typewriter Scrolling track state, including when
   toggled via ⌘D / ⌥⌘T or the status bar buttons
-- [ ] Appearance submenu: System / Light / Dark / Liquid Glass switches the window
+- [ ] Appearance submenu is System / Light / Dark only — Liquid Glass lives under
+      View → Window, and the two combine freely
 - [ ] There is exactly **one** View menu
-- [ ] minidown → About shows the version and licence
+- [ ] minidown → About shows the version, AGPL-3.0-or-later, and the bundled
+      third-party credits
 - [ ] Focus Mode and Typewriter show real checkmarks, not "✓" in the title
 
 ## Focus & typewriter

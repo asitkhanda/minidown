@@ -113,7 +113,7 @@ targets:
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSApplicationCategoryType: public.app-category.productivity
-        NSHumanReadableCopyright: "Copyright © 2026 Asit Khanda. AGPL-3.0."
+        NSHumanReadableCopyright: "Copyright © 2026 Asit Khanda. AGPL-3.0-or-later."
         LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
         NSSupportsAutomaticTermination: true
         NSSupportsSuddenTermination: true

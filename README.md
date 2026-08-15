@@ -63,16 +63,19 @@ CommonMark + GFM, plus:
   (View → Font)
 - **Status bar** — filename and save state; Focus/Typewriter toggles; stats
   that cycle words → characters → reading time
-- Native macOS menu bar; autosave once a file has a name
+- **A real document app** — `.md` files open from Finder, several documents open
+  at once in windows or tabs, and Recents, Duplicate, Rename, Revert To,
+  autosave-in-place and window restoration all behave the way macOS expects
+- Native macOS menu bar; runs sandboxed
 
 ### Export
 | Format | How | Notes |
 | ------ | --- | ----- |
 | PDF | ⌘P | WebKit print pipeline |
 | HTML | ⇧⌘E | Single styled file; KaTeX/mermaid CDN links only when used |
-| Word (.docx) | File → Export | via macOS `textutil` |
-| Rich Text (.rtf) | File → Export | via macOS `textutil` |
-| Plain text | File → Export | via macOS `textutil` |
+| Word (.docx) | File → Export | Native `NSAttributedString` writer |
+| Rich Text (.rtf) | File → Export | Native `NSAttributedString` writer |
+| Plain text | File → Export | Native `NSAttributedString` writer |
 
 ## Keyboard shortcuts
 
@@ -111,8 +114,12 @@ Update with `brew upgrade --cask minidown`.
 > **System Settings → Privacy & Security → Open Anyway**. See
 > [docs/RELEASING.md](docs/RELEASING.md) for why, and what it takes to remove that step.
 
-**Build from source:** requires macOS 14+, Xcode 16+, and
-[XcodeGen](https://github.com/yonaskolb/XcodeGen).
+**Build from source:** requires **Xcode 26+** and
+[XcodeGen](https://github.com/yonaskolb/XcodeGen). Xcode 26 is not optional:
+Liquid Glass needs the macOS 26 SDK to *compile*, and the
+`#available(macOS 26.0, *)` guards are runtime checks that do not make
+`NSGlassEffectView` resolve against an older SDK. The built app still runs on
+**macOS 14+**, falling back to a vibrant material below macOS 26.
 
 ```sh
 cd Minidown
@@ -135,16 +142,21 @@ the writing feel.
 
 ## Architecture
 
-- **App shell** — SwiftUI (`Minidown/Minidown/`): window, menus, status bar,
-  document state
+- **App shell** — SwiftUI (`Minidown/Minidown/`): a `DocumentGroup` over a
+  `ReferenceFileDocument`, so windows, tabs, Recents, Revert To and the
+  unsaved-changes prompts are the framework's rather than hand-rolled
 - **Editor** — AppKit `NSTextView` + custom `CollapsingLayoutManager` that
   zero-widths inactive markdown marks (same idea as CodeMirror replace
-  decorations)
+  decorations). Hiding is a glyph property, never a colour; focus dimming
+  happens at draw time so a caret move costs no restyle
 - **Parsing** — [swift-markdown](https://github.com/swiftlang/swift-markdown)
   (cmark-gfm) for the document AST; supplemental rules for frontmatter,
-  footnotes, and TeX math
-- **Code fences** — [Splash](https://github.com/JohnSundell/Splash) token colors
-- **Export** — HTML/PDF pipeline plus macOS `textutil` for Word/RTF/plain text
+  footnotes, and TeX math, masked against code so they never fire inside a fence
+- **Code fences** — [tree-sitter](https://tree-sitter.github.io) grammars for
+  eight languages, plus [Splash](https://github.com/JohnSundell/Splash) for Swift
+- **Export** — swift-markdown's `HTMLFormatter` for HTML, WebKit's print
+  operation for PDF, and native `NSAttributedString` writers for Word, RTF and
+  plain text (the app is sandboxed, so it cannot shell out to `textutil`)
 
 Rendering never rewrites the file. The only text mutations are explicit user
 actions (e.g. clicking a task checkbox).
@@ -163,13 +175,32 @@ scrolling feel) is covered by the manual checklist in
 
 ## Known limitations
 
-- KaTeX / Mermaid in the editor are WKWebView snapshots (async); first paint may
-  show a short placeholder until the CDN render completes. Export still embeds
-  live KaTeX/Mermaid scripts.
+- KaTeX / Mermaid in the editor are WKWebView snapshots (async), so first paint
+  may show a brief placeholder. Both libraries are bundled, so this does not
+  depend on the network. Exported HTML links the CDN copies instead, and only
+  when the document actually uses them.
 - Table cell contents in the widget are plain text (no nested bold/code), matching
   the previous app's grid limitation
-- Code signing / notarization not set up yet
+- Not code-signed with a Developer ID or notarized, so the first launch needs
+  **Open Anyway** — see [docs/RELEASING.md](docs/RELEASING.md). In-app
+  auto-updates wait on the same gap; updates come through Homebrew for now
 
 ## License
 
-[AGPL-3.0](LICENSE) — free forever; forks and derivatives must stay open.
+[AGPL-3.0-or-later](LICENSE) — free forever; forks and derivatives must stay
+open. Source files carry an SPDX header.
+
+### Third-party
+
+| | License |
+| --- | --- |
+| [swift-markdown](https://github.com/swiftlang/swift-markdown) | Apache-2.0 |
+| [SwiftTreeSitter](https://github.com/tree-sitter/swift-tree-sitter) | BSD-3-Clause |
+| tree-sitter and its eight grammars | MIT |
+| [Splash](https://github.com/JohnSundell/Splash) | MIT |
+| [KaTeX](https://katex.org), [Mermaid](https://mermaid.js.org) (bundled) | MIT |
+| [Phosphor Icons](https://phosphoricons.com) | MIT |
+| DM Sans, Spectral, Fira Code (bundled) | SIL OFL 1.1 |
+
+Licence texts for everything bundled in the app ship alongside the files, and
+are listed in the About panel.
